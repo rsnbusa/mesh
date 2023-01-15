@@ -12,7 +12,7 @@
 
 EXTERN pcnt_config_t                pcnt_config[8];
 EXTERN uint8_t                      ssignal[8],dia,mes;
-EXTERN int16_t                      theGuard;
+EXTERN int16_t                      theGuard,oldCurBeat[MAXDEVSS],oldCurLife[MAXDEVSS],lastFont,lastalign,oldcual;
 EXTERN bool                         donef;
 EXTERN FramSPI						fram;
 EXTERN SemaphoreHandle_t 		    framSem;
@@ -21,5 +21,7 @@ EXTERN framArgs_t                   framArg;
 EXTERN meterType                    medidor[8];
 EXTERN time_t                       now,oldnow;
 EXTERN struct tm                    timeinfo;
-
+#ifdef DISPLAY  
+EXTERN u8g2_t                       u8g2; // a structure which will contain all the data for one display
+#endif
 #endif

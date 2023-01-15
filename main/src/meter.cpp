@@ -14,6 +14,25 @@ static int s_retry_num = 0;
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
+
+
+void mdelay(uint32_t cuanto)
+{
+            vTaskDelay(cuanto / portTICK_PERIOD_MS);
+
+}
+
+uint32_t xmillis()
+{
+	return xTaskGetTickCount() * portTICK_PERIOD_MS;
+}
+
+uint32_t xmillisFromISR()
+{
+	return xTaskGetTickCountFromISR() * portTICK_PERIOD_MS;
+}
+
+
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
 {
@@ -29,9 +48,9 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         }
        printf("connect to the AP fail\n");
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        // ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
     //    printf( "got ip:" IPSTR "\n", IP2STR(&event->ip_info.ip));
-        gpio_set_level((gpio_num_t)2,1);
+        // gpio_set_level((gpio_num_t)2,1);
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
@@ -134,26 +153,63 @@ void wifi_init_sta(void * pArg)
     vTaskDelete(NULL);
 
 }
+
+#ifdef DISPLAY
+void ssdString(int x, int y, char * que,bool centerf)
+{
+    u8g2_DrawFrame(&u8g2,1,1,126,62);
+    if (!centerf)
+        u8g2_DrawStr(&u8g2, x,y,que);
+    else
+        {
+            int  w = u8g2_GetStrWidth(&u8g2,que);
+            int h = u8g2_GetMaxCharHeight(&u8g2);
+            int sw=u8g2_GetDisplayWidth(&u8g2);
+            int lstx=(sw-w)/2;
+            int lsty=(u8g2_GetDisplayHeight(&u8g2)+h/2)/2;
+            u8g2_DrawStr(&u8g2, lstx,lsty,que);
+        }
+	u8g2_SendBuffer(&u8g2);
+}
+#endif
+
 void init_vars()
 {
-    gpio_config_t 	        io_conf;
-    bzero(&io_conf,sizeof(io_conf));
-    
-    io_conf.mode = GPIO_MODE_OUTPUT;
-	io_conf.pull_down_en =GPIO_PULLDOWN_ENABLE;
-	io_conf.pin_bit_mask = (1ULL<<2); //output pins
-	gpio_config(&io_conf);
-    gpio_set_level((gpio_num_t)2,0);
-    
-    ssignal[0]=4;
-    ssignal[1]=13;
-    ssignal[2]=14;
-    ssignal[3]=15;
-    ssignal[4]=16;
-    ssignal[5]=17;
-    ssignal[6]=21;
-    ssignal[7]=22;
+
+    oldcual=9999;
+    ssignal[0]=14;
+    ssignal[1]=27;
+    ssignal[2]=26;
+    ssignal[3]=25;
+    ssignal[4]=33;
+    ssignal[5]=32;
+    ssignal[6]=35;
+    ssignal[7]=34;
     oldnow=0;
+
+    #ifdef DISPLAY
+	u8g2_esp32_hal_t   u8g2_esp32_hal;//
+    bzero(&u8g2_esp32_hal,sizeof(u8g2_esp32_hal));
+	u8g2_esp32_hal.sda   =(gpio_num_t)SDA;
+	u8g2_esp32_hal.scl  = (gpio_num_t)SCL;
+	u8g2_esp32_hal_init(u8g2_esp32_hal);
+	u8g2_Setup_ssd1306_i2c_128x64_noname_f(
+		&u8g2,
+		U8G2_R0,
+		//u8x8_byte_sw_i2c,
+		u8g2_esp32_i2c_byte_cb,
+		u8g2_esp32_gpio_and_delay_cb);  // init u8g2 structure
+	u8x8_SetI2CAddress(&u8g2.u8x8,0x78);    //FIXED 
+    u8g2_InitDisplay(&u8g2); // send init sequence to the display, display is in sleep mode after this,
+	u8g2_SetPowerSave(&u8g2, 0); // wake up display
+    u8g2_SetFont(&u8g2, u8g2_font_ncenB14_tr);
+    #ifdef DISPLAY
+    u8g2_ClearBuffer(&u8g2);
+    ssdString(10,38,(char*)"MeterIoT",true);
+#endif
+    // stx=10;
+    // sty=38;
+#endif
 }
 
 static void init_fram( bool load)
@@ -253,6 +309,7 @@ void app_main(void)
     kbd();      //start console
 #endif
     xTaskCreate(&wifi_init_sta,"wifi",10240,NULL, 10, NULL); 	        // show booting sequence active
+    xTaskCreate(&displayManager,"displ",10240,NULL, 10, NULL); 	        // show booting sequence active
 
     pcnt_evt_t evt;
     portBASE_TYPE res;

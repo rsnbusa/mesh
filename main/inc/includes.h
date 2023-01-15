@@ -30,6 +30,8 @@ extern "C"{
 #include "argtable3/argtable3.h"
 #include "esp_timer.h"
 #include "esp_sntp.h"
+#include "u8g2.h"
+#include "u8g2_esp32_hal.h"
 void app_main();
 }
 

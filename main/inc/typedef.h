@@ -36,4 +36,14 @@ typedef struct meterType{
     
 } meterType;
 
+typedef enum displayType {NODISPLAY,DISPLAYIT} displayType;
+typedef enum overType {NOREP,REPLACE} overType;
+
+enum OLEDDISPLAY_TEXT_ALIGNMENT {
+  TEXT_ALIGN_LEFT = 0,
+  TEXT_ALIGN_RIGHT = 1,
+  TEXT_ALIGN_CENTER = 2,
+  TEXT_ALIGN_CENTER_BOTH = 3
+};
+
 #endif
