@@ -33,6 +33,60 @@ uint32_t xmillisFromISR()
 }
 
 
+static void read_flash()
+{
+	esp_err_t q ;
+	size_t largo;
+
+	if(xSemaphoreTake(flashSem, portMAX_DELAY/  portTICK_RATE_MS))
+	{
+		q = nvs_open("config", NVS_READONLY, &nvshandle);
+		if(q!=ESP_OK)
+		{
+			printf("Error opening NVS Read File %x\n",q);
+			xSemaphoreGive(flashSem);
+			return;
+		}
+
+		largo=sizeof(theConf);
+		q=nvs_get_blob(nvshandle,"sysconf",(void*)&theConf,&largo);
+
+		if (q !=ESP_OK)
+			printf("Error read %x largo %d aqui %d\n",q,largo,sizeof(theConf));
+		nvs_close(nvshandle);
+		xSemaphoreGive(flashSem);
+	}
+}
+
+void write_to_flash() //save our configuration
+{
+	if(xSemaphoreTake(flashSem, portMAX_DELAY/  portTICK_RATE_MS))
+	{
+		esp_err_t q ;
+		q = nvs_open("config", NVS_READWRITE, &nvshandle);
+		if(q!=ESP_OK)
+		{
+			printf("Error opening NVS File RW %x\n",q);
+			xSemaphoreGive(flashSem);
+			return;
+		}
+		size_t req=sizeof(theConf);
+		q=nvs_set_blob(nvshandle,"sysconf",&theConf,req);
+		if (q ==ESP_OK)
+		{
+			q = nvs_commit(nvshandle);
+			if(q!=ESP_OK)
+				printf("Flash commit write failed %d\n",q);
+		}
+		else
+			printf("Fail to write flash %x\n",q);
+		nvs_close(nvshandle);
+		xSemaphoreGive(flashSem);
+	}
+}
+
+
+
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
 {
@@ -137,7 +191,7 @@ void wifi_init_sta(void * pArg)
             portMAX_DELAY);
 
     if (bits & WIFI_CONNECTED_BIT) {
-    //    printf( "connected to ap SSID:%s password:%s\n",SSID, PSW);
+       printf( "connected to ap SSID:%s password:%s\n",SSID, PSW);
                  sntpget();
     } else if (bits & WIFI_FAIL_BIT) {
        printf( "Failed to connect to SSID:%s, password:%s\n",
@@ -172,6 +226,191 @@ void ssdString(int x, int y, char * que,bool centerf)
 	u8g2_SendBuffer(&u8g2);
 }
 #endif
+
+esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
+{
+    mqttMsg_t mqttHandle;
+    char *msg;
+
+	// all calls check for eventGroupBits
+	// CONNECT starts process  and SUNSCRIBES to cmdQueue in case of incoming messages and which will wait for SUBSCRIBED event
+	// SUBSCRIBED will set the MQTT_BIT indicating a connection ready
+	// PUBLISH sends message and waits for PUBLISHED bit to be set and then UNSUBSCRIBES and waits for UNSUBSCRIBED which set BIT indicating complete transfer. Now STOP
+	// if a Message is available, allocate heap and send the message to a queue. Somebody down the line will have to free this message
+
+    esp_mqtt_client_handle_t client = event->client;
+    // your_context_t *context = event->context;
+    // cmdType lcmd;
+
+    switch (event->event_id) {
+        case MQTT_EVENT_CONNECTED:
+#ifdef DEBUGX
+			if(theConf.traceflag & (1<<MQTTD))
+				pprintf("%sMqtt connected\n",MQTTDT);
+#endif
+        	// mqttf=true;
+            esp_mqtt_client_subscribe(client,cmdQueue, 0);
+          //  printf("Subscribed to [%s]\n",cmdQueue);
+            // printf("Subscribed\n");
+            //set bit to allow submode to work and not crash
+            // xEventGroupSetBits(wifi_event_group, MQTT_BIT);//message sent bit
+
+            break;
+        case MQTT_EVENT_DISCONNECTED:
+#ifdef DEBUGX
+			if(theConf.traceflag & (1<<MQTTD))
+				pprintf("%sMqtt Disco\n",MQTTDT);
+#endif
+        	// mqttf=false;
+            // xEventGroupClearBits(wifi_event_group, MQTT_BIT);
+            break;
+        case MQTT_EVENT_SUBSCRIBED:
+      //  printf("Sub done\n");
+            // xEventGroupSetBits(wifi_event_group, MQTT_BIT);
+            break;
+        case MQTT_EVENT_UNSUBSCRIBED:
+#ifdef MQTTSUB
+            xEventGroupSetBits(wifi_event_group, PUB_BIT|DONE_BIT);//message sent bit
+#endif
+            break;
+        case MQTT_EVENT_PUBLISHED:
+#ifdef DEBUGX
+        	if(theConf.traceflag & (1<<MQTTD))
+        		pprintf("%sPublished MsgId %d\n",MQTTDT,event->msg_id);
+#endif
+#ifdef MQTTSUB
+            esp_mqtt_client_unsubscribe(client, cmdQueue);//bit is set by unsubscribe
+#else
+            // xEventGroupSetBits(wifi_event_group, PUB_BIT|DONE_BIT);//message sent bit
+#endif
+            break;
+        case MQTT_EVENT_DATA:
+            bzero(&mqttHandle,sizeof(mqttHandle));
+            msg=(char*)malloc(100);
+            bzero(msg,100);
+            memcpy(msg,event->data,event->data_len);
+            mqttHandle.message=(uint8_t*)msg;
+            mqttHandle.msgLen=event->data_len;
+
+            if(event->data_len)
+            {
+                printf("TOPIC=%.*s\n",event->topic_len, event->topic);
+                printf("DATA=%.*s %d\n", event->data_len, event->data, event->data_len);
+
+                if(xQueueSend( mqttQ,&mqttHandle,0 )!=pdPASS)
+                {
+                    printf("Cannot add msgd mqtt\n");
+                }
+
+                esp_mqtt_client_publish(clientCloud, cmdQueue, "", 0, 0,1);//delete retained
+            }
+            break;
+        case MQTT_EVENT_ERROR:
+#ifdef DEBUGX
+			if(theConf.traceflag & (1<<MQTTD))
+				pprintf("%sMqtt Error\n",MQTTDT);
+#endif
+        //    xEventGroupClearBits(wifi_event_group, MQTT_BIT);
+            break;
+        case MQTT_EVENT_BEFORE_CONNECT:
+            // xEventGroupClearBits(wifi_event_group, MQTT_BIT|DONE_BIT);
+        	break;
+        default:
+#ifdef DEBUGX
+        	if(theConf.traceflag & (1<<MQTTD))
+        		pprintf("%sEvent %d\n",MQTTDT,event->event_id);
+#endif
+            break;
+    }
+    return ESP_OK;
+}
+
+static int findCommand(const char * cual)
+{
+	for (int a=0;a<MAXCMDS;a++)
+	{
+		if(strcmp(cmds[a].comando,cual)==0)
+			return a;
+	}
+	return ESP_FAIL;
+}
+
+void mqttMgr(void *pArg)
+{
+    mqttMsg_t mqttHandle;
+	cJSON 	*elcmd;
+
+	int err=esp_mqtt_client_start(clientCloud);
+    if(err)
+    {
+        printf("Could not start Mqtt %d %x\n",err,err);
+    }
+
+    while(true)
+    {
+        if( xQueueReceive( mqttQ, &mqttHandle, portMAX_DELAY ))	//mqttHandle has a pointer to the original message. MUST be freed at some point
+        {
+            printf("Message In MQtt %s len %d\n",mqttHandle.message,mqttHandle.msgLen);
+            // char *algo=(char*)malloc(1000);
+            // memcpy((void*)algo,(void*)mqttHandle.message,mqttHandle.msgLen);
+            elcmd= cJSON_Parse((char*)mqttHandle.message);		//plain text to cJSON... must eventually cDelete elcmd
+			if(elcmd)
+			{
+				cJSON *order= 		cJSON_GetObjectItem(elcmd,"cmd");
+                if(order)
+                {
+                    int cual=findCommand(order->valuestring);
+                    if(cual>=0)
+                        (*cmds[cual].code)((void*)elcmd);	// call the cmd and wait for it to end
+                    else    
+                        printf("Invalid cmd received %s\n",order->valuestring);
+                }
+                cJSON_Delete(elcmd);
+            }
+            else
+                printf("Invalid parse\n");
+            
+            free(mqttHandle.message);
+        }
+    }
+}
+
+static void mqtt_app_start(void)
+{
+ 	// extern const unsigned char ssl_pem_start[] asm("_binary_mycert_start");
+	// extern const unsigned char ssl_pem_end[] asm("_binary_mycert_end");
+ 	// int len=ssl_pem_end-ssl_pem_start;
+
+	     memset((void*)&mqtt_cfg,0,sizeof(mqtt_cfg));
+	     mqtt_cfg.client_id=				"anybody";
+	     mqtt_cfg.username=					"wckwlvot";
+	     mqtt_cfg.password=					"MxoMTQjeEIHE";
+	     mqtt_cfg.uri = 					"mqtt://m13.cloudmqtt.com:18747";
+	     mqtt_cfg.event_handle = 			mqtt_event_handler;
+	     mqtt_cfg.disable_auto_reconnect=	true;
+        //  mqtt_cfg.cert_pem=(char*)ssl_pem_start;
+        //  mqtt_cfg.cert_len=len;
+
+		mqttQ = xQueueCreate( 20, sizeof( mqttMsg_t ) );
+		if(!mqttQ)
+			printf("Failed queue\n");
+
+		clientCloud=NULL;
+
+	    clientCloud = esp_mqtt_client_init(&mqtt_cfg);
+
+	    if(clientCloud)
+        {
+            // printf("Mqtt started\n");
+	    	xTaskCreate(&mqttMgr,"mqtt",10240,NULL, 5, NULL);
+        }
+	    else
+	    {
+	    	printf("Not configured Mqtt\n");	//should crash. No conn with Host defeats the purpose but lets save beats at least
+	    	return;
+	    }
+}
+
 
 void init_vars()
 {
@@ -210,7 +449,19 @@ void init_vars()
     // stx=10;
     // sty=38;
 #endif
+    int x=0;
+
+// {"cmd":"initmeter","unit":7,"mid":"888888888888","bpk":800,"kwh":8888}
+    strcpy((char*)&cmds[x].comando,         "restore");			        cmds[x].code=cmdRestore;				
+	strcpy((char*)&cmds[++x].comando,       "format");			        cmds[x].code=cmdFormat;					
+    strcpy((char*)&cmds[++x].comando,       "formatmeter");			    cmds[x].code=cmdFormatMeter;					
+	strcpy((char*)&cmds[++x].comando,       "initmeter");			    cmds[x].code=cmdInitMeter;					
+	strcpy((char*)&cmds[++x].comando,       "metrics");			        cmds[x].code=cmdMetrics;					
+	strcpy((char*)&cmds[++x].comando,       "controller");		        cmds[x].code=cmdController;					
 }
+
+// {"cmd":"initmeter","unit":0,"mid":"1111111111","kwh":1111,"bpk":800}
+// {"cmd":"metrics","unit":0}
 
 static void init_fram( bool load)
 {
@@ -227,12 +478,17 @@ static void init_fram( bool load)
 		if(load)
         {
 			for (int a=0;a<8;a++)
+            {
 				fram.read_meter(a,(uint8_t*)&medidor[a],sizeof(meterType));
+                medidor[a].lastclock=xmillis();
+                medidor[a].maxamp=0;
+                medidor[a].minamp=9999;
+            }
 	    }
         else
             framSem=NULL;
     }
-    /*
+   /* 
     printf("FramSize %d\n FRAMDATE %d GUARDM %d SCRATCH %d\
     BEATSTART %d MID %d BEATLIFE %d MKWMSTART %d\
     MUPDATE %d LIFEKWH %d LIFEDATE %d\
@@ -264,7 +520,9 @@ static void pcnt_example_init(pcnt_unit_t unit)
     pcnt_config [unit].unit =unit;
     pcnt_config [unit].pos_mode = PCNT_COUNT_INC;   // Count up on the positive edge
     pcnt_config[unit] .neg_mode = PCNT_COUNT_DIS;   // Keep the counter value on the negative edge
-    pcnt_config[unit] .counter_h_lim =medidor[unit].bpk/100;
+    medidor[unit].suma= pcnt_config[unit] .counter_h_lim =1;        // max loss is 10% of BPK of meter
+    // pcnt_config[unit] .counter_h_lim =medidor[unit].suma=medidor[unit].bpk/100;        // max loss is 10% of BPK of meter
+    // printf("beats loss[%d]=%d\n",unit,medidor[unit].bpk/100);
     pcnt_unit_config(&pcnt_config[unit]);
 
     /* Configure and enable the input filter */
@@ -284,9 +542,72 @@ static void pcnt_example_init(pcnt_unit_t unit)
     pcnt_counter_resume(unit);
 }
 
+void erase_config()
+{
+ 
+    wifi_prov_mgr_reset_provisioning();
+    esp_wifi_restore();
+    nvs_flash_init();
+    bzero(&theConf,sizeof(theConf));
+    theConf.centinel=CENTINEL;
+    theConf.provincia=17;
+    theConf.canton=1;
+    theConf.parroquia=56;
+    theConf.codpostal=170801;
+    time((time_t*)&theConf.bornDate);
+    write_to_flash();
+}
+
+void network(void *pArg)
+{
+
+
+   // printf("Starting network\n");
+    app_wifi_init();
+
+    wifi_prov_mgr_config_t config = {
+    .scheme = wifi_prov_scheme_ble,
+    .scheme_event_handler = WIFI_PROV_SCHEME_BLE_EVENT_HANDLER_FREE_BTDM
+};
+
+    ESP_ERROR_CHECK(wifi_prov_mgr_init(config));
+
+    bool provisioned = false;
+    /* Let's find out if the device is provisioned */
+  esp_err_t err=wifi_prov_mgr_is_provisioned(&provisioned);
+    // ESP_ERROR_CHECK(wifi_prov_mgr_deinit());
+
+    u8g2_ClearBuffer(&u8g2);
+    ssdString(10,38,provisioned?(char*)"WiFI":(char*)"PROV",true);
+
+    err = app_wifi_start(POP_TYPE_NONE,(char*)"PROV_METER",(char *)"csttpstt");
+    if (err != ESP_OK) {
+        //fail only(i guess) happens when had a SSID and not accesible,s o lets reprovision it
+        printf("Could not start Wifi. Reprovisioning!!!\n");
+        wifi_prov_mgr_reset_provisioning();
+        ESP_ERROR_CHECK(esp_wifi_restore());
+        nvs_flash_init();
+        esp_restart();
+    }
+
+    u8g2_ClearBuffer(&u8g2);
+    ssdString(10,38,(char*)"Time",true);
+    sntpget();
+    u8g2_ClearBuffer(&u8g2);
+    ssdString(10,38,(char*)"MQTT",true);
+    mqtt_app_start();
+    u8g2_ClearBuffer(&u8g2);
+    u8g2_SendBuffer(&u8g2);
+
+        displayMode=3;
+    vTaskDelete(NULL);
+}
+
 void app_main(void)
 {
 
+	flashSem= xSemaphoreCreateBinary();
+	xSemaphoreGive(flashSem);
 
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) 
@@ -297,8 +618,21 @@ void app_main(void)
     }
     ESP_ERROR_CHECK( err );
 
+    read_flash();
+    if(theConf.centinel!=CENTINEL)
+    {
+        printf("Erase Config\n");
+        erase_config();
+    }
+
+//cmd and info queue names
+    sprintf(cmdQueue,"meter/%d/%d/%d/%d/%d/cmd",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
+    sprintf(infoQueue,"meter/%d/%d/%d/%d/%d/info",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
+    
     init_vars();
+
     pcnt_evt_queue = xQueueCreate(10, sizeof(pcnt_evt_t));
+
     init_fram(true);
     // printf("Medidor size %d METRSIZE %d Maxbytes %d\n",sizeof(meterType),DATAEND-BEATSTART,fram.intframWords);
 
@@ -308,20 +642,39 @@ void app_main(void)
 #ifdef DEBB
     kbd();      //start console
 #endif
-    xTaskCreate(&wifi_init_sta,"wifi",10240,NULL, 10, NULL); 	        // show booting sequence active
+
     xTaskCreate(&displayManager,"displ",10240,NULL, 10, NULL); 	        // show booting sequence active
+    xTaskCreate(&network,"displ",10240,NULL, 10, NULL); 	        // show booting sequence active
+
+
+
+    // xTaskCreate(&wifi_init_sta,"wifi",10240,NULL, 10, NULL); 	        // show booting sequence active
+    uint32_t ahora=0,dif=0;
+    float amps;
 
     pcnt_evt_t evt;
     portBASE_TYPE res;
-    while (true) {
+    while (true) {      //wait for an event which will be when a High Limit is fired, equivalent to BPK/100
         res = xQueueReceive(pcnt_evt_queue, &evt, portMAX_DELAY / portTICK_PERIOD_MS);
         if (res == pdTRUE) {
             if (evt.status & PCNT_EVT_H_LIM) 
             {
-                medidor[evt.unit].beat+=medidor[evt.unit].bpk/100;
-                medidor[evt.unit].beatlife+=medidor[evt.unit].bpk/100;
-
-                printf("Save [%d] van %d\n",evt.unit, medidor[evt.unit].beat);
+                ahora=xmillis();
+                dif=ahora-medidor[evt.unit].lastclock;
+                medidor[evt.unit].lastclock=ahora;
+                medidor[evt.unit].beat++;
+                // medidor[evt.unit].beat+=medidor[evt.unit].suma;
+                medidor[evt.unit].beatlife++;
+                // medidor[evt.unit].beatlife+=medidor[evt.unit].suma;
+                if(dif>0)
+                {
+                    amps=4500.0/dif*AMPSHORA;
+                    if(amps>medidor[evt.unit].maxamp)
+                        medidor[evt.unit].maxamp=amps;
+                    if(amps<medidor[evt.unit].minamp)
+                        medidor[evt.unit].minamp=amps;
+                }
+                // printf("Save [%d] van %d dif %d max %.02f min %.02f\n",evt.unit, medidor[evt.unit].beat,dif, medidor[evt.unit].maxamp, medidor[evt.unit].minamp);
                 if( medidor[evt.unit].beat>=medidor[evt.unit].bpk)
                 {
                     time(&now);
@@ -333,7 +686,7 @@ void app_main(void)
                         strftime(buf, 300, "%c", &timeinfo);
                         dia=timeinfo.tm_yday;
                         mes=timeinfo.tm_mon;
-                        printf("Write kwh date %s mes %d day %d\n",buf,mes,dia);
+                        // printf("Write kwh date %s mes %d day %d\n",buf,mes,dia);
                         free(buf);
                     }
                     medidor[evt.unit].lifekwh++;
@@ -344,9 +697,14 @@ void app_main(void)
                     fram.write_meter(evt.unit,(uint8_t*)&medidor[evt.unit],sizeof(meterType));
                 }
                 else
-                {
-                    fram.write_beat(evt.unit, medidor[evt.unit].beat);
-                    fram.write_beatlife(evt.unit, medidor[evt.unit].beatlife);
+                {   
+                    medidor[evt.unit].suma++;
+                    if( medidor[evt.unit].suma> medidor[evt.unit].bpk/100)
+                    {
+                        fram.write_beat(evt.unit, medidor[evt.unit].beat);
+                        fram.write_beatlife(evt.unit, medidor[evt.unit].beatlife);
+                        medidor[evt.unit].suma=0;
+                    }
                 }
             }
         } 

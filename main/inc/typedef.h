@@ -31,9 +31,10 @@ typedef struct meterType{
     uint16_t beat;
     char mid[12];
     uint16_t bpk;
-    uint32_t beatlife,kwhstart,lastupdate,lifekwh,lifedate;
+    uint32_t beatlife,kwhstart,lastupdate,lifekwh,lifedate,lastclock;
     uint16_t months[12],days[366];
-    
+    uint8_t suma;
+    float maxamp,minamp;
 } meterType;
 
 typedef enum displayType {NODISPLAY,DISPLAYIT} displayType;
@@ -45,5 +46,29 @@ enum OLEDDISPLAY_TEXT_ALIGNMENT {
   TEXT_ALIGN_CENTER = 2,
   TEXT_ALIGN_CENTER_BOTH = 3
 };
+
+typedef struct mqttMsgInt{
+	uint8_t 	*message;	// memory of message. MUST be freed by the Submode Routine and allocated by caller
+	uint16_t	msgLen;
+	char		*queueName;	// queue name to send
+	uint32_t	maxTime;	//max ms to wait
+}mqttMsg_t;
+
+
+typedef int (*functrsn)(void *);
+
+typedef struct cmdRecord{
+    char 		comando[20];
+    functrsn 	code;
+    uint32_t	count;
+}cmdRecord;
+
+typedef struct config {
+    time_t 		bornDate;
+    uint32_t 	bootcount,lastResetCode,centinel;
+    uint8_t		provincia,canton,parroquia;
+    uint32_t	codpostal,controllerid;
+    char		direccion[45];
+} config_flash;
 
 #endif

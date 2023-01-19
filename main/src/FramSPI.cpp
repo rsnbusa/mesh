@@ -50,8 +50,6 @@ bool FramSPI::begin(int MOSI, int MISO, int CLK, int CS,SemaphoreHandle_t *framS
 	if (ret==ESP_OK)
 	{
 		getDeviceID(&manufID, &prodId);
-		// if(theConf.traceflag & (1<<FRAMD))
-			printf("ManufacturerId %04x ProductId %04x TotalFram %d\n",manufID,prodId,TOTALFRAM);
 		//Set write enable after chip is identified
 		switch(prodId)
 		{
@@ -90,6 +88,7 @@ bool FramSPI::begin(int MOSI, int MISO, int CLK, int CS,SemaphoreHandle_t *framS
 			intframWords=0;
 			return false;
 		}
+		printf("ManufacturerId %04x ProductId %04x Need %d have %d\n",manufID,prodId,TOTALFRAM,intframWords);
 
 		spi_bus_remove_device(spi); //remove device to reset speed to max
 

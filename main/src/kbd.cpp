@@ -6,6 +6,14 @@
 uint32_t theAddress=0;
 uint8_t wmeter=0;
 
+static void lafecha(time_t now, char * donde)
+{
+    struct tm timeinfo;
+
+    localtime_r(&now, &timeinfo);
+    strftime(donde, 300, "%c", &timeinfo);
+}
+
 
 int cmdFram(int argc, char **argv)
 {
@@ -279,7 +287,18 @@ int cmdMeter(int argc, char **argv)
   }
   return 0;
 }
+int cmdConfig(int argc, char **argv)
+{
+  char buf[50];
 
+  lafecha(theConf.bornDate,buf);
+
+  printf("======= Controller Configuration  =======\n");
+  printf("Id : %d  Address: %s Created %s\n",theConf.controllerid,theConf.direccion,buf);
+  printf("Provincia: %d Canton: %d Parroquia:%d CodigoPostal:%d\n",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal);
+  printf("BootCount %d LastReset %d\n",theConf.bootcount,theConf.lastResetCode);
+  return 0;
+}
 
 void kbd()
 {
@@ -323,9 +342,18 @@ void kbd()
         .argtable = NULL
     };
 
+    const esp_console_cmd_t config_cmd = {
+        .command = "config",
+        .help = "Show Configuration",
+        .hint = NULL,
+        .func = &cmdConfig,
+        .argtable = NULL
+    };
+
 
     ESP_ERROR_CHECK(esp_console_cmd_register(&fram_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&meter_cmd));
+    ESP_ERROR_CHECK(esp_console_cmd_register(&config_cmd));
 
 
    ESP_ERROR_CHECK(esp_console_start_repl(repl));

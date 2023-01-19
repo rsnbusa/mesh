@@ -10,3 +10,9 @@
 #define DEBB
 #define LOCALTIME                       "GMT+5"
 #define DISPLAY
+
+#define MAXCMDS                         10
+
+#define CENTINEL                        0x12345678
+
+#define AMPSHORA                        (8.33)
