@@ -1,6 +1,7 @@
 #ifndef FORWARDS_H
 #define FORWARDS_H
 
+void set_senddata_timer();
 void kbd();
 void displayManager(void *pArg);
 void mdelay(uint32_t a);

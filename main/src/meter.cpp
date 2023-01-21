@@ -149,6 +149,8 @@ void sntpget()
             // printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buf,timeinfo.tm_yday);
             free(buf);
         }
+        set_senddata_timer();
+
     }
 }
 
@@ -415,6 +417,10 @@ static void mqtt_app_start(void)
 
 void init_vars()
 {
+//cmd and info queue names
+    sprintf(cmdQueue,"meter/%d/%d/%d/%d/%d/cmd",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
+    sprintf(infoQueue,"meter/%d/%d/%d/%d/%d/info",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
+    // printf("Cmd Q %s\nInfo %s\n",cmdQueue,infoQueue);
 
     oldcual=9999;
     ssignal[0]=14;
@@ -555,6 +561,8 @@ void erase_config()
     theConf.parroquia=0;
     theConf.codpostal=0;
     time((time_t*)&theConf.bornDate);
+    theConf.mqttSlots=125;
+    theConf.pubCycle=6;
     write_to_flash();
 }
 
@@ -583,6 +591,52 @@ void testMqtt(void * pArg)
 
     vTaskDelete(NULL);
 }
+
+
+void set_senddata_timer()
+{
+    // get our defined time slot based on the controllerid and expected publish time... in seconds
+    // mqttSlots will be defined by default and modified by Host via any cmd message with SLOT primitive in Json msg
+    // same for pubCycle CYCLE which is the average time to publish(send) a controllers Data Message containing each meters id and current kwh
+
+    timeSlotStart=theConf.controllerid/theConf.mqttSlots*theConf.pubCycle;
+    int incr=theConf.controllerid % theConf.mqttSlots;
+    if (incr)
+        timeSlotStart++;
+   timeSlotStart *=theConf.pubCycle;
+
+    time_t now;
+    struct tm timeinfo;
+
+    time(&now);
+    localtime_r(&now, &timeinfo);           //right now
+    // char *buf=(char*)malloc(300);
+    // if(buf)
+    // {
+    //     bzero(buf,300);
+    //     strftime(buf, 300, "%c", &timeinfo);
+    //     printf("Now %s\n",buf);
+    //     free(buf);
+    // }
+    timeinfo.tm_mday++;
+    timeinfo.tm_hour=0;
+    timeinfo.tm_min=0;
+    timeinfo.tm_sec=0; //midnight
+    time_t midnight = mktime(&timeinfo);
+    time_t son=midnight-now;
+    // buf=(char*)malloc(300);
+    // if(buf)
+    // {
+    //     bzero(buf,300);
+    //     strftime(buf, 300, "%c", &timeinfo);
+    //     printf("Midnight %s\n",buf);
+    //     free(buf);
+    // }
+    printf("Secs to midnight %d final %d incr %d\n",(uint32_t)son,timeSlotStart,incr);
+    // firstimer will be secs to midnight + timeSlotStart then after that a timer every 86400 secs (1 day)
+}
+
+
 
 void network(void *pArg)
 {
@@ -664,13 +718,12 @@ void app_main(void)
 
 	theConf.lastResetCode=esp_rom_get_reset_reason(0);
     theConf.bootcount++;
+
+    theConf.mqttSlots=100;
+    theConf.pubCycle=6;
+
     write_to_flash();
 
-
-//cmd and info queue names
-    sprintf(cmdQueue,"meter/%d/%d/%d/%d/%d/cmd",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
-    sprintf(infoQueue,"meter/%d/%d/%d/%d/%d/info",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
-    printf("Cmd Q %s\nInfo %s\n",cmdQueue,infoQueue);
     init_vars();
 
     pcnt_evt_queue = xQueueCreate(10, sizeof(pcnt_evt_t));

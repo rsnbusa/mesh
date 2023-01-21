@@ -69,7 +69,7 @@ typedef struct config {
     char		direccion[45];
     uint16_t    maxamp;
     uint32_t    downtime;
-    uint16_t    connections,pubCycle;
+    uint16_t   mqttSlots,pubCycle;
 } config_flash;
 
 #endif

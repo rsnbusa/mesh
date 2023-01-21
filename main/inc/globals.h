@@ -19,7 +19,7 @@ const static int SENDH_BIT 				= BIT6;
 
 EXTERN pcnt_config_t                pcnt_config[8];
 EXTERN uint8_t                      ssignal[8],dia,mes,displayMode,suma[MAXDEVSS];
-EXTERN int16_t                      theGuard,lastFont,lastalign,oldcual;
+EXTERN int16_t                      theGuard,lastFont,lastalign,oldcual,timeSlotStart,timeSlotEnd;
 EXTERN int                          oldCurBeat[MAXDEVSS],oldCurLife[MAXDEVSS];
 EXTERN bool                         donef,mqttf;
 EXTERN FramSPI						fram;

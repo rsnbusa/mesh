@@ -16,3 +16,4 @@
 #define CENTINEL                        0x12345678
 
 #define AMPSHORA                        (8.33)
+#define BIASHOUR                        (14)
