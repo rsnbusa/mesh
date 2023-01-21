@@ -36,6 +36,7 @@ extern "C"{
 #include "mqtt_client.h"
 #include <wifi_provisioning/manager.h>
 #include <wifi_provisioning/scheme_ble.h>
+#include "esp_system.h"
 void app_main();
 }
 

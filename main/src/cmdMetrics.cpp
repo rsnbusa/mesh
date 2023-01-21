@@ -20,7 +20,7 @@ int cmdMetrics(void *argument)
         if(unit )
         {
             int unitt=unit->valueint;
-            printf("Metrics Meter  %d ",unitt);
+            printf("Metrics Meter  %d\n",unitt);
             if(unitt<MAXDEVSS)
             {
                 cJSON *root=cJSON_CreateObject();
@@ -35,6 +35,9 @@ int cmdMetrics(void *argument)
                 cJSON_AddNumberToObject(root,"BeatsLife", medidor[unitt].beatlife);
                 cJSON_AddNumberToObject(root,"KwH Start", medidor[unitt].kwhstart);
                 cJSON_AddNumberToObject(root,"KwH Life", medidor[unitt].lifekwh);
+                cJSON_AddNumberToObject(root,"Max Amps", medidor[unitt].maxamp);
+                cJSON_AddNumberToObject(root,"Min Amps", medidor[unitt].minamp);
+                cJSON_AddNumberToObject(root,"Inst Amps", amps[unitt]);
 
                 char *buf=(char*)malloc(300);
                 if(buf)

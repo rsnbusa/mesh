@@ -16,7 +16,9 @@
 //medidores 
 #define BEATSTART           (SCRATCHEND)           
 #define MID                 (BEATSTART+MWORD)      
-#define BPK                 (MID+12)                
+#define MAXAMP              (MID+12)      
+#define MINAMP              (MAXAMP+MWORD)      
+#define BPK                 (MINAMP+MWORD)                
 #define BEATLIFE            (BPK+MWORD)                 
 #define MKWHSTART           (BEATLIFE+LLONG)        
 #define MUPDATE             (MKWHSTART+LLONG)       

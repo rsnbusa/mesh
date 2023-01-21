@@ -23,6 +23,8 @@ int cmdInitMeter(void *argument)
             time((time_t*)&medidor[unitt].lifedate);
             medidor[unitt].lastupdate=medidor[unitt].lifedate;
             medidor[unitt].bpk=bpk->valueint;
+            medidor[unitt].maxamp=0;
+            medidor[unitt].minamp=9999;
             fram.write_meter(unitt, (uint8_t*)&medidor[unitt],sizeof(meterType));
         }
         return ESP_OK;

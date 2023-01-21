@@ -11,4 +11,6 @@ int cmdFormatMeter(void *argument);
 int cmdInitMeter(void *argument);
 int cmdMetrics(void *argument);
 int cmdController(void *argument);
+int cmdUpdate(void *argument);
+int cmdErase(void *argument);
 #endif

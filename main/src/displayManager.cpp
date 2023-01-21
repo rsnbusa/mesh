@@ -130,9 +130,9 @@ void displayMeter(int ccual)
 			drawString(1, 34, textd, 16, TEXT_ALIGN_CENTER,NODISPLAY, REPLACE);
 			// int count=0;
 			// pcnt_get_counter_value((pcnt_unit_t)cual,(short int *) &count);
-			sprintf(textd,"%.0f",medidor[cual].maxamp);
+			sprintf(textd,"%d",medidor[cual].maxamp);
 			drawString(1, 48, textd, 10, TEXT_ALIGN_LEFT,NODISPLAY, NOREP);
-			sprintf(textd," beat %d",medidor[cual].beat);
+			sprintf(textd," beat %d  %.1f",medidor[cual].beat,amps[cual]);
 			drawString(1, 48, textd, 10, TEXT_ALIGN_CENTER,DISPLAYIT, NOREP);
 			return;
 		}
@@ -206,7 +206,8 @@ void displayManager(void *arg)
 			sprintf(textd,"%02d/%02d/%04d",timeinfo.tm_mday,timeinfo.tm_mon+1,1900+timeinfo.tm_year);
 			sprintf(textt,"%02d:%02d:%02d",timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
 			drawString(0, 63, textd, 10, TEXT_ALIGN_LEFT,NODISPLAY, REPLACE);
-			drawString(81, 63, textt, 10, TEXT_ALIGN_LEFT,DISPLAYIT, REPLACE);
+			drawString(81, 63, textt, 10, TEXT_ALIGN_LEFT,NODISPLAY, REPLACE);
+			drawString(1, 63, mqttf?(char*)"M":(char*)"X", 10, TEXT_ALIGN_CENTER,DISPLAYIT, REPLACE);
 			displayMeter(displayMode);
 			
 		}

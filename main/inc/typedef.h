@@ -30,11 +30,9 @@ typedef struct {
 typedef struct meterType{
     uint16_t beat;
     char mid[12];
-    uint16_t bpk;
+    uint16_t maxamp,minamp,bpk;
     uint32_t beatlife,kwhstart,lastupdate,lifekwh,lifedate,lastclock;
     uint16_t months[12],days[366];
-    uint8_t suma;
-    float maxamp,minamp;
 } meterType;
 
 typedef enum displayType {NODISPLAY,DISPLAYIT} displayType;
@@ -69,6 +67,9 @@ typedef struct config {
     uint8_t		provincia,canton,parroquia;
     uint32_t	codpostal,controllerid;
     char		direccion[45];
+    uint16_t    maxamp;
+    uint32_t    downtime;
+    uint16_t    connections,pubCycle;
 } config_flash;
 
 #endif

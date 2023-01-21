@@ -6,6 +6,9 @@
 uint32_t theAddress=0;
 uint8_t wmeter=0;
 
+extern void erase_config();
+
+
 static void lafecha(time_t now, char * donde)
 {
     struct tm timeinfo;
@@ -223,7 +226,8 @@ if (framArg.dumpm->count) {
       fram.read_kwhstart(a,(uint8_t*)&kwhs);
       int kwhlife=0;
       fram.read_lifekwh(a,(uint8_t*)&kwhlife);
-      printf("Meter [%d]  [id=%s] [BPK %d] [Created %s] [beat %d] [lifebeat %d] [kwhStart %d] [lifekwh %d] [Updated %s]\n",a,id,medidor[a].bpk,strftime_buf,beat,medidor[a].beatlife,kwhs,kwhlife,buf);
+      printf("Meter [%d]  [id=%s] [BPK %d] [Created %s] [beat %d] [lifebeat %d] [kwhStart %d] [lifekwh %d] [Updated %s] [MaxAmp %d] [MinAmp %d]\n",a
+              ,id,medidor[a].bpk,strftime_buf,beat,medidor[a].beatlife,kwhs,kwhlife,buf,medidor[a].maxamp,medidor[a].minamp);
       if (buf)
           free(buf);
     }
@@ -287,16 +291,27 @@ int cmdMeter(int argc, char **argv)
   }
   return 0;
 }
+
 int cmdConfig(int argc, char **argv)
 {
-  char buf[50];
+  char buf[50],buf2[50];
+  time_t lastwrite;
 
   lafecha(theConf.bornDate,buf);
-
+  fram.read_guard((uint8_t*)&lastwrite);
+  lafecha(lastwrite,buf2);
   printf("======= Controller Configuration  =======\n");
   printf("Id : %d  Address: %s Created %s\n",theConf.controllerid,theConf.direccion,buf);
   printf("Provincia: %d Canton: %d Parroquia:%d CodigoPostal:%d\n",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal);
-  printf("BootCount %d LastReset %d\n",theConf.bootcount,theConf.lastResetCode);
+  printf("BootCount %d LastReset %d Reason %d DownTime %d lastupdate %s\n",theConf.bootcount,theConf.lastResetCode,theConf.lastResetCode,theConf.downtime,buf2);
+  return 0;
+}
+
+int cmdErase(int argc, char **argv)
+{
+  printf("Erase Controller...");
+  erase_config();
+  printf("done\n");
   return 0;
 }
 
@@ -350,10 +365,19 @@ void kbd()
         .argtable = NULL
     };
 
+    const esp_console_cmd_t erase_cmd = {
+        .command = "erase",
+        .help = "Show Configuration",
+        .hint = NULL,
+        .func = &cmdErase,
+        .argtable = NULL
+    };
+
 
     ESP_ERROR_CHECK(esp_console_cmd_register(&fram_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&meter_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&config_cmd));
+    ESP_ERROR_CHECK(esp_console_cmd_register(&erase_cmd));
 
 
    ESP_ERROR_CHECK(esp_console_start_repl(repl));
