@@ -249,7 +249,7 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
 
-				printf("Mqtt connected\n");
+				// printf("Mqtt connected\n");
 
         	// mqttf=true;
             esp_mqtt_client_subscribe(client,cmdQueue, 0);
@@ -263,13 +263,13 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
         case MQTT_EVENT_DISCONNECTED:
 
 			// if(theConf.traceflag & (1<<MQTTD))
-				printf("Mqtt Disco\n");
+				// printf("Mqtt Disco\n");
 
         	mqttf=false;
             // xEventGroupClearBits(wifi_event_group, MQTT_BIT);
             break;
         case MQTT_EVENT_SUBSCRIBED:
-        printf("Sub done\n");
+        // printf("Sub done\n");
              xEventGroupSetBits(wifi_event_group, MQTT_BIT);
             break;
         case MQTT_EVENT_UNSUBSCRIBED:
@@ -344,11 +344,11 @@ void mqttMgr(void *pArg)
     mqttMsg_t mqttHandle;
 	cJSON 	*elcmd;
 
-	int err=esp_mqtt_client_start(clientCloud);
-    if(err)
-    {
-        printf("Could not start Mqtt %d %x\n",err,err);
-    }
+	// int err=esp_mqtt_client_start(clientCloud);
+    // if(err)
+    // {
+    //     printf("Could not start Mqtt %d %x\n",err,err);
+    // }
 
     while(true)
     {
@@ -587,15 +587,15 @@ void erase_config()
 void testMqtt(void * pArg)
 {
 
-// printf("Start test\n");
+    printf("Start test\n");
     uint32_t starttest=xmillis();
-	// int err=esp_mqtt_client_start(clientCloud);
-    // if(err)
-    // {
-    //     printf("Could not start Mqtt %d %x\n",err,err);
-    //     // vTaskDelete(NULL);
-    // }
-    // printf("Waiting connect\n");
+	int err=esp_mqtt_client_start(clientCloud);
+    if(err)
+    {
+        printf("Could not start Mqtt %d %x\n",err,err);
+        // vTaskDelete(NULL);
+    }
+   // printf("Waiting connect\n");
     xEventGroupWaitBits(wifi_event_group, MQTT_BIT, false, true,  portMAX_DELAY/ portTICK_RATE_MS);
 
     xEventGroupClearBits(wifi_event_group, MQTT_BIT);	// clear bit to wait on
@@ -605,28 +605,57 @@ void testMqtt(void * pArg)
     xEventGroupWaitBits(wifi_event_group, MQTT_BIT, false, true,  portMAX_DELAY/ portTICK_RATE_MS);
     uint32_t endtest=xmillis();
     printf("Mqtt test ended duration %d\n",endtest-starttest);
-    // err=esp_mqtt_client_stop(clientCloud);
-
+    err=esp_mqtt_client_stop(clientCloud);
+    if(pArg)
+        free(pArg);
     // vTaskDelete(NULL);
 }
 
  void repeatCallback( TimerHandle_t xTimer )
  {
+        time_t now;
+    struct tm timeinfo;
     printf("Repeat timer\n");
-    testMqtt((void*)"Repeat");
+          time(&now);
 
+        localtime_r(&now, &timeinfo);
+        char *buf=(char*)malloc(300);
+        if(buf)
+        {
+            bzero(buf,300);
+            strftime(buf, 300, "%c", &timeinfo);
+            strcpy(fecha,buf);
+            // printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buf,timeinfo.tm_yday);
+            testMqtt(buf);  //testmqtt will free the buffer
+        }
  }
 
  void firstCallback( TimerHandle_t xTimer )
  {
+    time_t now;
+    struct tm timeinfo;
+
     printf("First TImer called\n");
-    repeatTimer=xTimerCreate("Timer",pdMS_TO_TICKS(10000),pdTRUE,( void * ) 0, repeatCallback);
+      time(&now);
+
+        localtime_r(&now, &timeinfo);
+        char *buf=(char*)malloc(300);
+        if(buf)
+        {
+            bzero(buf,300);
+            strftime(buf, 300, "%c", &timeinfo);
+            strcpy(fecha,buf);
+            // printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buf,timeinfo.tm_yday);
+            testMqtt(buf);  //testmqtt will free the buffer
+        }
+
+    repeatTimer=xTimerCreate("Timer",pdMS_TO_TICKS(60000),pdTRUE,( void * ) 0, repeatCallback);
     // repeatTimer=xTimerCreate("Timer",pdMS_TO_TICKS(86400000),pdFALSE,( void * ) 0, repeatCallback);
-    // if( xTimerStart(repeatTimer, 0 ) != pdPASS )
-    // {
-    //     printf("Repeat Timer failed\n");
-    // }
-    testMqtt((void*)"First");
+    if( xTimerStart(repeatTimer, 0 ) != pdPASS )
+    {
+        printf("Repeat Timer failed\n");
+    }
+
  }
 
 void set_senddata_timer()
