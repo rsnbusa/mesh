@@ -41,5 +41,5 @@ EXTERN float                        amps[MAXDEVSS];
 EXTERN u8g2_t                       u8g2; // a structure which will contain all the data for one display
 #endif
 EXTERN EventGroupHandle_t 			wifi_event_group;
-
+EXTERN TimerHandle_t                firstTimer,repeatTimer;
 #endif
