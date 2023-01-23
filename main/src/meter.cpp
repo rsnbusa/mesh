@@ -15,10 +15,7 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 
-extern const uint8_t hive_start[]   asm("_binary_hive_pem_start");
-extern const uint8_t hive_end[]   asm("_binary_hive_pem_end");
 
-int ssllen=hive_end-hive_start;
 
 void mdelay(uint32_t cuanto)
 {
@@ -393,25 +390,27 @@ static void mqtt_app_start(void)
     bzero(who,sizeof(who));
     sprintf(who,"Meterserver%d",theConf.controllerid);
     printf("Who %s\n",who);
- 	// extern const unsigned char ssl_pem_start[] asm("_binary_mycert_start");
-	// extern const unsigned char ssl_pem_end[] asm("_binary_mycert_end");
- 	// int len=ssl_pem_end-ssl_pem_start;
+// extern const uint8_t hive_start[]   asm("_binary_hive_pem_start");
+// extern const uint8_t hive_end[]   asm("_binary_hive_pem_end");
+
+// int ssllen=hive_end-hive_start;
 
         wifi_event_group = xEventGroupCreate();
 
+
         bzero((void*)&mqtt_cfg,sizeof(mqtt_cfg));
-        mqtt_cfg.client_id=				    "me";
+        mqtt_cfg.client_id=				    who;
         mqtt_cfg.username=					"wckwlvot";
         mqtt_cfg.password=					"MxoMTQjeEIHE";
         mqtt_cfg.uri = 					    "mqtt://m13.cloudmqtt.com:18747";
-        // mqtt_cfg.username=					"rsimpsonbusa";
-        // mqtt_cfg.password=					"Csttpstt0179";
-        // mqtt_cfg.uri = 					    "ssl://8cb3b896a9ff4973ab94b219d8ef1de8.s2.eu.hivemq.cloud:8883";
-        mqtt_cfg.event_handle = 			mqtt_event_handler;
-
-	    //  mqtt_cfg.disable_auto_reconnect=	true;
-         mqtt_cfg.cert_pem=(char*)hive_start;
-         mqtt_cfg.cert_len=ssllen;
+        // mqtt_cfg.username=					    "user1";
+        // mqtt_cfg.password=					    "Csttpstt1";
+        // mqtt_cfg.uri = 					        "ssl://8cb3b896a9ff4973ab94b219d8ef1de8.s2.eu.hivemq.cloud:8883";
+        mqtt_cfg.event_handle = 			    mqtt_event_handler;
+	    mqtt_cfg.disable_auto_reconnect=	true;
+        // mqtt_cfg.cert_pem=NULL;
+        // mqtt_cfg.cert_pem=(char*)hive_start;
+        // mqtt_cfg.cert_len=ssllen;
 
 		mqttQ = xQueueCreate( 20, sizeof( mqttMsg_t ) );
 		if(!mqttQ)
