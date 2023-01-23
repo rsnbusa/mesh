@@ -315,6 +315,14 @@ int cmdErase(int argc, char **argv)
   return 0;
 }
 
+int cmdSend(int argc, char **argv)
+{
+  printf("Setting Mqtt Send Bit");
+  xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// clear bit to wait on
+  printf("done\n");
+  return 0;
+}
+
 void kbd()
 {
     esp_console_repl_t       *repl=NULL;
@@ -367,9 +375,17 @@ void kbd()
 
     const esp_console_cmd_t erase_cmd = {
         .command = "erase",
-        .help = "Show Configuration",
+        .help = "Erase Configuration",
         .hint = NULL,
         .func = &cmdErase,
+        .argtable = NULL
+    };
+
+    const esp_console_cmd_t send_cmd = {
+        .command = "send",
+        .help = "Send Mqtt Msgsn",
+        .hint = NULL,
+        .func = &cmdSend,
         .argtable = NULL
     };
 
@@ -378,6 +394,7 @@ void kbd()
     ESP_ERROR_CHECK(esp_console_cmd_register(&meter_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&config_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&erase_cmd));
+    ESP_ERROR_CHECK(esp_console_cmd_register(&send_cmd));
 
 
    ESP_ERROR_CHECK(esp_console_start_repl(repl));

@@ -14,6 +14,7 @@ static int s_retry_num = 0;
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
+void mqtt_sender(void *pArg);
 
 
 
@@ -414,7 +415,10 @@ static void mqtt_app_start(void)
 
 		mqttQ = xQueueCreate( 20, sizeof( mqttMsg_t ) );
 		if(!mqttQ)
-			printf("Failed queue\n");
+			printf("Failed queue Cmd\n");
+		mqttSender = xQueueCreate( 20, sizeof( mqttSender_t ) );
+		if(!mqttSender)
+			printf("Failed queue Sender\n");
 
 		clientCloud=NULL;
 
@@ -424,6 +428,7 @@ static void mqtt_app_start(void)
         {
              printf("Mqtt started\n");
 	    	xTaskCreate(&mqttMgr,"mqtt",10240,NULL, 5, NULL);
+	    	xTaskCreate(&mqtt_sender,"mqttsend",10240,NULL, 5, NULL);
         }
 	    else
 	    {
@@ -611,10 +616,71 @@ void testMqtt(void * pArg)
     // vTaskDelete(NULL);
 }
 
+void mqtt_sender(void *pArg)
+{
+     EventBits_t bits;
+
+    mqttSender_t mensaje;
+
+        xEventGroupClearBits(wifi_event_group, SENDMQTT_BIT);	// clear bit to wait on
+
+    while(true)
+    {
+        bits= xEventGroupWaitBits(wifi_event_group,SENDMQTT_BIT,pdFALSE,true,portMAX_DELAY);
+
+        if (bits & SENDMQTT_BIT) 
+        {
+            xEventGroupClearBits(wifi_event_group, SENDMQTT_BIT);	// clear bit to wait on
+            int son=uxQueueMessagesWaiting( mqttSender);
+            printf( "Mqtt Sending process waiting %d\n",son);
+
+    printf("Start test\n");
+    uint32_t starttest=xmillis();
+	int err=esp_mqtt_client_start(clientCloud);
+    if(err)
+    {
+        printf("Could not start Mqtt %d %x\n",err,err);
+        // vTaskDelete(NULL);
+    }
+   // printf("Waiting connect\n");
+    xEventGroupWaitBits(wifi_event_group, MQTT_BIT, false, true,  portMAX_DELAY/ portTICK_RATE_MS);
+
+            while(true)
+            {
+                if( xQueueReceive( mqttSender, &mensaje, 0 ))	//mqttHandle has a pointer to the original message. MUST be freed at some point
+                {
+                    //mqttSenderMsg is a pointer to the data to send
+                    //after being sent, free the buffer
+                    if(mensaje.msg)
+                    {
+                        printf("sender msg %s\n",mensaje.msg);
+                        xEventGroupClearBits(wifi_event_group, MQTT_BIT);	// clear bit to wait on
+
+                        esp_mqtt_client_publish(clientCloud, infoQueue, (char*)mensaje.msg,strlen((char*)mensaje.msg), 1,0);
+
+                        xEventGroupWaitBits(wifi_event_group, MQTT_BIT, false, true,  portMAX_DELAY/ portTICK_RATE_MS);
+                        uint32_t endtest=xmillis();
+                        printf("Mqtt test ended duration %d\n",endtest-starttest);
+                        starttest=xmillis();
+                        free(mensaje.msg);
+                    }               
+                }
+                else
+                {
+                    printf("Queue empty\n");
+                     err=esp_mqtt_client_stop(clientCloud);
+                    break;
+                }
+            }
+        }
+    }
+}
+
  void repeatCallback( TimerHandle_t xTimer )
  {
         time_t now;
     struct tm timeinfo;
+        mqttSender_t mensaje;
     printf("Repeat timer\n");
           time(&now);
 
@@ -626,7 +692,11 @@ void testMqtt(void * pArg)
             strftime(buf, 300, "%c", &timeinfo);
             strcpy(fecha,buf);
             // printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buf,timeinfo.tm_yday);
-            testMqtt(buf);  //testmqtt will free the buffer
+            mensaje.msg=buf;            //will be freed by sender
+            mensaje.lenMsg=strlen(buf);
+            xQueueSend(mqttSender,&mensaje,0);
+            //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
+           // testMqtt(buf);  //testmqtt will free the buffer
         }
  }
 
@@ -634,6 +704,7 @@ void testMqtt(void * pArg)
  {
     time_t now;
     struct tm timeinfo;
+    mqttSender_t mensaje;
 
     printf("First TImer called\n");
       time(&now);
@@ -646,10 +717,15 @@ void testMqtt(void * pArg)
             strftime(buf, 300, "%c", &timeinfo);
             strcpy(fecha,buf);
             // printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buf,timeinfo.tm_yday);
-            testMqtt(buf);  //testmqtt will free the buffer
+            mensaje.msg=buf;            //will be freed by sender
+            mensaje.lenMsg=strlen(buf);
+            xQueueSend(mqttSender,&mensaje,0);
+            //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
+
+            // testMqtt(buf);  //testmqtt will free the buffer
         }
 
-    repeatTimer=xTimerCreate("Timer",pdMS_TO_TICKS(60000),pdTRUE,( void * ) 0, repeatCallback);
+    repeatTimer=xTimerCreate("Timer",pdMS_TO_TICKS(20000),pdTRUE,( void * ) 0, repeatCallback);
     // repeatTimer=xTimerCreate("Timer",pdMS_TO_TICKS(86400000),pdFALSE,( void * ) 0, repeatCallback);
     if( xTimerStart(repeatTimer, 0 ) != pdPASS )
     {

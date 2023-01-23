@@ -61,6 +61,11 @@ typedef struct cmdRecord{
     uint32_t	count;
 }cmdRecord;
 
+typedef struct mqttRecord{
+    char        * msg;
+    uint16_t    lenMsg;
+}mqttSender_t;
+
 typedef struct config {
     time_t 		bornDate;
     uint32_t 	bootcount,lastResetCode,centinel;

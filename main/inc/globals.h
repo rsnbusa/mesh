@@ -14,7 +14,7 @@ const static int WIFI_BIT 				= BIT1;
 const static int PUB_BIT 				= BIT2;
 const static int DONE_BIT 				= BIT3;
 const static int SNTP_BIT 				= BIT4;
-const static int TELEM_BIT 				= BIT5;
+const static int SENDMQTT_BIT			= BIT5;
 const static int SENDH_BIT 				= BIT6;
 
 EXTERN pcnt_config_t                pcnt_config[8];
@@ -31,7 +31,7 @@ EXTERN time_t                       now,oldnow;
 EXTERN struct tm                    timeinfo;
 EXTERN esp_mqtt_client_config_t 	mqtt_cfg;
 EXTERN esp_mqtt_client_handle_t     clientCloud;
-EXTERN QueueHandle_t 				mqttQ,mqttR;
+EXTERN QueueHandle_t 				mqttQ,mqttR,mqttSender;
 EXTERN cmdRecord 					cmds[MAXCMDS];
 EXTERN config_flash                 theConf;
 EXTERN nvs_handle 					nvshandle;
