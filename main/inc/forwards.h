@@ -14,4 +14,7 @@ int cmdMetrics(void *argument);
 int cmdController(void *argument);
 int cmdUpdate(void *argument);
 int cmdErase(void *argument);
+int cmdOTA(void *argument);
+char * sendData(bool forced);
+
 #endif

@@ -19,8 +19,8 @@ const static int SENDH_BIT 				= BIT6;
 
 EXTERN pcnt_config_t                pcnt_config[8];
 EXTERN uint8_t                      ssignal[8],dia,mes,displayMode,suma[MAXDEVSS];
-EXTERN int16_t                      theGuard,lastFont,lastalign,oldcual,timeSlotStart,timeSlotEnd;
-EXTERN int                          oldCurBeat[MAXDEVSS],oldCurLife[MAXDEVSS];
+EXTERN int16_t                      theGuard,lastFont,lastalign,oldcual,timeSlotStart,timeSlotEnd,sentMqtt;
+EXTERN int                          oldCurBeat[MAXDEVSS],oldCurLife[MAXDEVSS],lastkwh[MAXDEVSS];
 EXTERN bool                         donef,mqttf;
 EXTERN FramSPI						fram;
 EXTERN SemaphoreHandle_t 		    framSem,flashSem;
@@ -42,4 +42,5 @@ EXTERN u8g2_t                       u8g2; // a structure which will contain all 
 #endif
 EXTERN EventGroupHandle_t 			wifi_event_group;
 EXTERN TimerHandle_t                firstTimer,repeatTimer;
+// EXTERN char*                        TAG;
 #endif

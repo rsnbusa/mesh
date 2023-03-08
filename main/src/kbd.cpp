@@ -7,7 +7,8 @@ uint32_t theAddress=0;
 uint8_t wmeter=0;
 
 extern void erase_config();
-
+extern void write_to_flash();
+extern void start_ota();
 
 static void lafecha(time_t now, char * donde)
 {
@@ -261,6 +262,50 @@ if (framArg.dumpm->count) {
   return 0;
 }
 
+int cmdController(int argc, char **argv)
+{
+  char str[20];
+
+      printf("Controller Id:");
+      gets(str);
+      theConf.controllerid=atoi(str);
+      printf("%d\n",theConf.controllerid);
+
+
+      printf("Provincia:");
+      gets(str);
+      theConf.provincia=atoi(str);
+      printf("%d\n",theConf.provincia);
+
+
+      printf("Canton");
+      gets(str);
+      theConf.canton=atoi(str);
+      printf("%d\n",theConf.canton);
+
+
+      printf("Parroquia");
+      gets(str);
+      theConf.parroquia=atoi(str);
+      printf("%d\n",theConf.parroquia);
+
+
+      printf("Postal");
+      gets(str);
+      theConf.codpostal=atoi(str);
+      printf("%d\n",theConf.codpostal);
+
+
+      printf("Address");
+      gets(theConf.direccion);
+      printf("%s\n",theConf.direccion);
+
+
+      write_to_flash();
+
+   return 0;
+}
+
 int cmdMeter(int argc, char **argv)
 {
   char update[40],initd[40];
@@ -297,13 +342,30 @@ int cmdConfig(int argc, char **argv)
   char buf[50],buf2[50];
   time_t lastwrite;
 
+  const esp_partition_t *running = esp_ota_get_running_partition();
+
+  esp_app_desc_t running_app_info;
+  if (esp_ota_get_partition_description(running, &running_app_info) != ESP_OK) {
+      printf( "Error getting partition versionn");
+  }
+
+  wifi_config_t conf;
+  if(esp_wifi_get_config(WIFI_IF_STA, &conf)!=ESP_OK)
+  {
+    printf("Error readinmg wifi config\n");
+    return 0;
+  }
+
   lafecha(theConf.bornDate,buf);
   fram.read_guard((uint8_t*)&lastwrite);
   lafecha(lastwrite,buf2);
   printf("======= Controller Configuration  =======\n");
-  printf("Id : %d  Address: %s Created %s\n",theConf.controllerid,theConf.direccion,buf);
+  printf("Firmware Version:%s SSID:%s\n", running_app_info.version,conf.sta.ssid);
+  printf("Id : %d  Address: %s Created %s Slot %d  Cycle %d\n",theConf.controllerid,theConf.direccion,buf,theConf.mqttSlots,theConf.pubCycle);
   printf("Provincia: %d Canton: %d Parroquia:%d CodigoPostal:%d\n",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal);
   printf("BootCount %d LastReset %d Reason %d DownTime %d lastupdate %s\n",theConf.bootcount,theConf.lastResetCode,theConf.lastResetCode,theConf.downtime,buf2);
+  printf("Command Queue %s\n",cmdQueue);
+  printf("Info Queue %s\n",infoQueue);
   return 0;
 }
 
@@ -320,6 +382,13 @@ int cmdSend(int argc, char **argv)
   printf("Setting Mqtt Send Bit");
   xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// clear bit to wait on
   printf("done\n");
+  return 0;
+}
+
+int cmdOTA(int argc, char **argv)
+{
+  printf("Starting OTA kbd");
+  start_ota();
   return 0;
 }
 
@@ -389,12 +458,30 @@ void kbd()
         .argtable = NULL
     };
 
+    const esp_console_cmd_t ota_cmd = {
+        .command = "ota",
+        .help = "Start Ota Update",
+        .hint = NULL,
+        .func = &cmdOTA,
+        .argtable = NULL
+    };
+
+    const esp_console_cmd_t controler_cmd = {
+        .command = "control",
+        .help = "Configure Controller",
+        .hint = NULL,
+        .func = &cmdController,
+        .argtable = NULL
+    };
+
 
     ESP_ERROR_CHECK(esp_console_cmd_register(&fram_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&meter_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&config_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&erase_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&send_cmd));
+    ESP_ERROR_CHECK(esp_console_cmd_register(&controler_cmd));
+    ESP_ERROR_CHECK(esp_console_cmd_register(&ota_cmd));
 
 
    ESP_ERROR_CHECK(esp_console_start_repl(repl));

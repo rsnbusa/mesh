@@ -17,3 +17,6 @@
 
 #define AMPSHORA                        (8.33)
 #define BIASHOUR                        (14)
+
+#define OTAURL                          "http://161.35.115.228/metermgr.bin"
+#define OTADEL                          5000

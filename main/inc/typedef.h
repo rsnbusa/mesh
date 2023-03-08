@@ -57,6 +57,7 @@ typedef int (*functrsn)(void *);
 
 typedef struct cmdRecord{
     char 		comando[20];
+    char        abr[6];
     functrsn 	code;
     uint32_t	count;
 }cmdRecord;
@@ -74,7 +75,8 @@ typedef struct config {
     char		direccion[45];
     uint16_t    maxamp;
     uint32_t    downtime;
-    uint16_t   mqttSlots,pubCycle;
+    uint16_t    mqttSlots,pubCycle;
+    uint16_t    nodeConf;
 } config_flash;
 
 #endif

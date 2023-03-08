@@ -104,7 +104,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         }
        printf("connect to the AP fail\n");
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+        // ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
     //    printf( "got ip:" IPSTR "\n", IP2STR(&event->ip_info.ip));
         // gpio_set_level((gpio_num_t)2,1);
         s_retry_num = 0;
@@ -148,7 +148,7 @@ void sntpget()
             bzero(buf,300);
             strftime(buf, 300, "%c", &timeinfo);
             strcpy(fecha,buf);
-            // printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buf,timeinfo.tm_yday);
+             printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buf,timeinfo.tm_yday);
             free(buf);
         }
         set_senddata_timer();
@@ -182,11 +182,13 @@ void wifi_init_sta(void * pArg)
                                                         NULL,
                                                         &instance_got_ip));
 
+    esp_wifi_set_ps (WIFI_PS_NONE);     
     wifi_config_t wifi_config;
     bzero((void*)&wifi_config,sizeof(wifi_config));
     strcpy((char*)wifi_config.sta.ssid,SSID);
     strcpy((char*)wifi_config.sta.password,PSW);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
+    esp_wifi_set_ps (WIFI_PS_NONE);     
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
     ESP_ERROR_CHECK(esp_wifi_start() );
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
@@ -250,7 +252,7 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
 
-				// printf("Mqtt connected\n");
+				//  printf("Mqtt connected\n");
 
         	// mqttf=true;
             esp_mqtt_client_subscribe(client,cmdQueue, 0);
@@ -270,7 +272,7 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             // xEventGroupClearBits(wifi_event_group, MQTT_BIT);
             break;
         case MQTT_EVENT_SUBSCRIBED:
-        // printf("Sub done\n");
+        //  printf("Sub done\n");
              xEventGroupSetBits(wifi_event_group, MQTT_BIT);
             break;
         case MQTT_EVENT_UNSUBSCRIBED:
@@ -285,13 +287,13 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 #ifdef MQTTSUB
             esp_mqtt_client_unsubscribe(client, cmdQueue);//bit is set by unsubscribe
 #else
-            xEventGroupSetBits(wifi_event_group, MQTT_BIT);//message sent bit
+            xEventGroupSetBits(wifi_event_group, PUB_BIT);//message sent bit
 #endif
             break;
         case MQTT_EVENT_DATA:
             bzero(&mqttHandle,sizeof(mqttHandle));
-            msg=(char*)malloc(100);
-            bzero(msg,100);
+            msg=(char*)malloc(1000);
+            bzero(msg,1000);
             memcpy(msg,event->data,event->data_len);
             mqttHandle.message=(uint8_t*)msg;
             mqttHandle.msgLen=event->data_len;
@@ -305,8 +307,8 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
                 {
                     printf("Cannot add msgd mqtt\n");
                 }
-
                 esp_mqtt_client_publish(clientCloud, cmdQueue, "", 0, 0,1);//delete retained
+
             }
             break;
         case MQTT_EVENT_ERROR:
@@ -366,7 +368,13 @@ void mqttMgr(void *pArg)
                 {
                     int cual=findCommand(order->valuestring);
                     if(cual>=0)
+                    {
+#ifdef DISPLAY
+                        u8g2_ClearBuffer(&u8g2);
+                        ssdString(10,38,cmds[cual].abr,true);
+#endif
                         (*cmds[cual].code)((void*)elcmd);	// call the cmd and wait for it to end
+                    }
                     else    
                         printf("Invalid cmd received %s\n",order->valuestring);
                 }
@@ -374,8 +382,9 @@ void mqttMgr(void *pArg)
             }
             else
                 printf("Invalid parse\n");
-            
-            free(mqttHandle.message);
+
+            if(mqttHandle.message)
+                free(mqttHandle.message);
         }
     }
 }
@@ -443,7 +452,7 @@ void init_vars()
 //cmd and info queue names
     sprintf(cmdQueue,"meter/%d/%d/%d/%d/%d/cmd",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
     sprintf(infoQueue,"meter/%d/%d/%d/%d/%d/info",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
-    // printf("Cmd Q %s\nInfo %s\n",cmdQueue,infoQueue);
+    printf("Cmd Q %s\nInfo %s\n",cmdQueue,infoQueue);
 
     oldcual=9999;
     ssignal[0]=14;
@@ -482,14 +491,15 @@ void init_vars()
     int x=0;
 
 // {"cmd":"initmeter","unit":7,"mid":"888888888888","bpk":800,"kwh":8888}
-    strcpy((char*)&cmds[x].comando,         "restore");			        cmds[x].code=cmdRestore;				
-	strcpy((char*)&cmds[++x].comando,       "format");			        cmds[x].code=cmdFormat;					
-    strcpy((char*)&cmds[++x].comando,       "formatmeter");			    cmds[x].code=cmdFormatMeter;					
-	strcpy((char*)&cmds[++x].comando,       "initmeter");			    cmds[x].code=cmdInitMeter;					
-	strcpy((char*)&cmds[++x].comando,       "metrics");			        cmds[x].code=cmdMetrics;					
-	strcpy((char*)&cmds[++x].comando,       "controller");		        cmds[x].code=cmdController;					
-	strcpy((char*)&cmds[++x].comando,       "update");		            cmds[x].code=cmdUpdate;					
-	strcpy((char*)&cmds[++x].comando,       "erase");		            cmds[x].code=cmdErase;					
+    strcpy((char*)&cmds[x].comando,         "restore");			        cmds[x].code=cmdRestore;		strcpy((char*)&cmds[x].abr,         "RST");		
+	strcpy((char*)&cmds[++x].comando,       "format");			        cmds[x].code=cmdFormat;			strcpy((char*)&cmds[x].abr,         "FRMT");		
+    strcpy((char*)&cmds[++x].comando,       "formatmeter");			    cmds[x].code=cmdFormatMeter;	strcpy((char*)&cmds[x].abr,         "FRMTM");    				
+	strcpy((char*)&cmds[++x].comando,       "initmeter");			    cmds[x].code=cmdInitMeter;		strcpy((char*)&cmds[x].abr,         "INTIM");			
+	strcpy((char*)&cmds[++x].comando,       "metrics");			        cmds[x].code=cmdMetrics;		strcpy((char*)&cmds[x].abr,         "METRC");			
+	strcpy((char*)&cmds[++x].comando,       "controller");		        cmds[x].code=cmdController;		strcpy((char*)&cmds[x].abr,         "CNTRL");			
+	strcpy((char*)&cmds[++x].comando,       "update");		            cmds[x].code=cmdUpdate;			strcpy((char*)&cmds[x].abr,         "UPDT");		
+	strcpy((char*)&cmds[++x].comando,       "erase");		            cmds[x].code=cmdErase;			strcpy((char*)&cmds[x].abr,         "ERSE");		
+	strcpy((char*)&cmds[++x].comando,       "ota");		                cmds[x].code=cmdOTA;			strcpy((char*)&cmds[x].abr,         "OTA");		
 }
 
 // {"cmd":"initmeter","unit":0,"mid":"1111111111","kwh":1111,"bpk":800}
@@ -505,6 +515,7 @@ static void init_fram( bool load)
 	framFlag=fram.begin(FMOSI,FMISO,FCLK,FCS,&framSem); //will create SPI channel and Semaphore
 	if(framFlag)
 	{
+        bzero(&lastkwh[0],sizeof(lastkwh));
 		//load all devices counters from FRAM
 		// fram.write_guard(theGuard);				// theguard is dynamic and will change every boot.
         // printf("Medidor size %d\n",sizeof(medidor[0]));
@@ -514,6 +525,7 @@ static void init_fram( bool load)
             {
 				fram.read_meter(a,(uint8_t*)&medidor[a],sizeof(meterType));
                 medidor[a].lastclock=xmillis();
+                lastkwh[a]=medidor[a].lifekwh;      //track progress to avoid sending same reading every time 
             }
 	    }
         else
@@ -573,16 +585,14 @@ static void pcnt_example_init(pcnt_unit_t unit)
 
 void erase_config()
 {
- 
+    srand(time(NULL));
     wifi_prov_mgr_reset_provisioning();
     esp_wifi_restore();
+    nvs_flash_erase();
     nvs_flash_init();
     bzero(&theConf,sizeof(theConf));
+    theConf.controllerid = 1 + (rand() % 999999);       //will be displayed as the node for configuration
     theConf.centinel=CENTINEL;
-    theConf.provincia=0;
-    theConf.canton=0;
-    theConf.parroquia=0;
-    theConf.codpostal=0;
     time((time_t*)&theConf.bornDate);
     theConf.mqttSlots=125;
     theConf.pubCycle=6;
@@ -616,121 +626,127 @@ void testMqtt(void * pArg)
     // vTaskDelete(NULL);
 }
 
-void mqtt_sender(void *pArg)
+void mqtt_sender(void *pArg)        // MQTTT data sender task
 {
-     EventBits_t bits;
-
     mqttSender_t mensaje;
+    uint32_t starttest,endtest;
+    int err;
 
-        xEventGroupClearBits(wifi_event_group, SENDMQTT_BIT);	// clear bit to wait on
+    xEventGroupClearBits(wifi_event_group, SENDMQTT_BIT);	// clear bit to wait on
 
     while(true)
     {
-        bits= xEventGroupWaitBits(wifi_event_group,SENDMQTT_BIT,pdFALSE,true,portMAX_DELAY);
+        xEventGroupWaitBits(wifi_event_group,SENDMQTT_BIT,pdFALSE,true,portMAX_DELAY);    //wait forever, this is the starting gun
 
-        if (bits & SENDMQTT_BIT) 
+        xEventGroupClearBits(wifi_event_group, SENDMQTT_BIT);	// clear bit to wait on for next msg
+
+        starttest=xmillis();
+	    err=esp_mqtt_client_start(clientCloud);         //start a MQTT connection, wait for it in MQTT_BIT
+        if(err)
+            printf("Could not start Mqtt %d %x\n",err,err);
+
+        xEventGroupWaitBits(wifi_event_group, MQTT_BIT, false, true,  portMAX_DELAY/ portTICK_RATE_MS); //what happens if timeout???
+
+        // CRITICAL READ. Tema Latencia de RX o TX de WiFi
+        // Delay required so that the MQTT Task is able to perform internal functions and receive data
+        //mdelay(100); // NEEDs this time to "think" I guess or work on getting messages etc. 1000 seen as minimum but whne changing AMPDU in Menuconfig 
+        // to DISABLED it works WITHOUT delays
+
+        while(true)
         {
-            xEventGroupClearBits(wifi_event_group, SENDMQTT_BIT);	// clear bit to wait on
-            int son=uxQueueMessagesWaiting( mqttSender);
-            printf( "Mqtt Sending process waiting %d\n",son);
-
-    printf("Start test\n");
-    uint32_t starttest=xmillis();
-	int err=esp_mqtt_client_start(clientCloud);
-    if(err)
-    {
-        printf("Could not start Mqtt %d %x\n",err,err);
-        // vTaskDelete(NULL);
-    }
-   // printf("Waiting connect\n");
-    xEventGroupWaitBits(wifi_event_group, MQTT_BIT, false, true,  portMAX_DELAY/ portTICK_RATE_MS);
-
-            while(true)
+            if( xQueueReceive( mqttSender, &mensaje, 10 ))	//mqttHandle has a pointer to the original message. MUST be freed at some point
             {
-                if( xQueueReceive( mqttSender, &mensaje, 0 ))	//mqttHandle has a pointer to the original message. MUST be freed at some point
+                if(mensaje.msg)
                 {
-                    //mqttSenderMsg is a pointer to the data to send
-                    //after being sent, free the buffer
-                    if(mensaje.msg)
-                    {
-                        printf("sender msg %s\n",mensaje.msg);
-                        xEventGroupClearBits(wifi_event_group, MQTT_BIT);	// clear bit to wait on
-
-                        esp_mqtt_client_publish(clientCloud, infoQueue, (char*)mensaje.msg,strlen((char*)mensaje.msg), 1,0);
-
-                        xEventGroupWaitBits(wifi_event_group, MQTT_BIT, false, true,  portMAX_DELAY/ portTICK_RATE_MS);
-                        uint32_t endtest=xmillis();
-                        printf("Mqtt test ended duration %d\n",endtest-starttest);
-                        starttest=xmillis();
-                        free(mensaje.msg);
-                    }               
-                }
-                else
-                {
-                    printf("Queue empty\n");
-                     err=esp_mqtt_client_stop(clientCloud);
-                    break;
-                }
+                    xEventGroupClearBits(wifi_event_group, PUB_BIT);	// clear bit to wait on
+                    esp_mqtt_client_publish(clientCloud, infoQueue, (char*)mensaje.msg,strlen((char*)mensaje.msg), 1,0);
+                    // get confirmation of msg being published
+                    xEventGroupWaitBits(wifi_event_group, PUB_BIT, false, true,  portMAX_DELAY/ portTICK_RATE_MS);
+                    endtest=xmillis();
+                    printf("Mqtt time %dms\n",endtest-starttest);
+                    starttest=xmillis();
+                    free(mensaje.msg);
+                }               
+            }
+            else
+            {
+                err=esp_mqtt_client_stop(clientCloud);
+                if(err)
+                    printf("Error stoping mqtt %x\n",err);
+                break;
             }
         }
     }
 }
 
+
  void repeatCallback( TimerHandle_t xTimer )
  {
-        time_t now;
+    time_t now;
     struct tm timeinfo;
-        mqttSender_t mensaje;
-    printf("Repeat timer\n");
-          time(&now);
+    mqttSender_t mensaje;
 
-        localtime_r(&now, &timeinfo);
-        char *buf=(char*)malloc(300);
-        if(buf)
+    // printf("Repeat timer\n");
+    time(&now);
+
+    localtime_r(&now, &timeinfo);
+    mensaje.msg=sendData(false);            //will be freed by sender
+    if(mensaje.msg)
+        mensaje.lenMsg=strlen(mensaje.msg);
+    if(mensaje.msg!=NULL)   //if somtehting to send do it
+    {
+        if(xQueueSend(mqttSender,&mensaje,0)!=pdPASS)
         {
-            bzero(buf,300);
-            strftime(buf, 300, "%c", &timeinfo);
-            strcpy(fecha,buf);
-            // printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buf,timeinfo.tm_yday);
-            mensaje.msg=buf;            //will be freed by sender
-            mensaje.lenMsg=strlen(buf);
-            xQueueSend(mqttSender,&mensaje,0);
-            //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
-           // testMqtt(buf);  //testmqtt will free the buffer
+            printf("Error queueing msg\n");
+            if(mensaje.msg)
+                free(mensaje.msg);  //due to failure
         }
+        else
+            //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
+            xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send everything now !!!!!
+    }
  }
 
+/**
+ * ? que sera
+ * ! warning
+ * * Important
+ * TODO: algo
+ * @param xTimer este parametro
+ */
  void firstCallback( TimerHandle_t xTimer )
  {
     time_t now;
     struct tm timeinfo;
     mqttSender_t mensaje;
 
-    printf("First TImer called\n");
-      time(&now);
+    time(&now);
 
-        localtime_r(&now, &timeinfo);
-        char *buf=(char*)malloc(300);
-        if(buf)
+    localtime_r(&now, &timeinfo);
+    mensaje.msg=sendData(true);            //will be freed by sender, Force sending first caller to allow incoming messages
+    if(mensaje.msg)
+        mensaje.lenMsg=strlen(mensaje.msg);
+    printf("FirstTimer %s\n",mensaje.msg);
+    if(mensaje.msg!=NULL)   //if somtehting to send do it
+    {
+        if(xQueueSend(mqttSender,&mensaje,0)!=pdPASS)
         {
-            bzero(buf,300);
-            strftime(buf, 300, "%c", &timeinfo);
-            strcpy(fecha,buf);
-            // printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buf,timeinfo.tm_yday);
-            mensaje.msg=buf;            //will be freed by sender
-            mensaje.lenMsg=strlen(buf);
-            xQueueSend(mqttSender,&mensaje,0);
-            //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
-
-            // testMqtt(buf);  //testmqtt will free the buffer
-        }
-
-    repeatTimer=xTimerCreate("Timer",pdMS_TO_TICKS(20000),pdTRUE,( void * ) 0, repeatCallback);
+            printf("Error queueing msg\n");
+            if(mensaje.msg)
+                free(mensaje.msg);  //due to failure
+        };
+    }
+    // repeatTimer=xTimerCreate("Timer",pdMS_TO_TICKS(20000),pdTRUE,( void * ) 0, repeatCallback);    // every 20secs for now
+    repeatTimer=xTimerCreate("Timer",pdMS_TO_TICKS(3600000),pdTRUE,( void * ) 0, repeatCallback);    // every hour for now
+    // repeatTimer=xTimerCreate("Timer",pdMS_TO_TICKS((theConf.mqttSlots*theConf.pubCycle+1)*1000),pdTRUE,( void * ) 0, repeatCallback);
     // repeatTimer=xTimerCreate("Timer",pdMS_TO_TICKS(86400000),pdFALSE,( void * ) 0, repeatCallback);
+
     if( xTimerStart(repeatTimer, 0 ) != pdPASS )
     {
         printf("Repeat Timer failed\n");
     }
+
+    xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send everything !!!!!!
 
  }
 
@@ -744,38 +760,22 @@ void set_senddata_timer()
     int incr=theConf.controllerid % theConf.mqttSlots;
     if (incr)
         timeSlotStart++;
-   timeSlotStart *=theConf.pubCycle;
+        
+    timeSlotStart *=theConf.pubCycle;
 
     time_t now;
     struct tm timeinfo;
 
     time(&now);
     localtime_r(&now, &timeinfo);           //right now
-    // char *buf=(char*)malloc(300);
-    // if(buf)
-    // {
-    //     bzero(buf,300);
-    //     strftime(buf, 300, "%c", &timeinfo);
-    //     printf("Now %s\n",buf);
-    //     free(buf);
-    // }
     timeinfo.tm_mday++;
     timeinfo.tm_hour=0;
     timeinfo.tm_min=0;
     timeinfo.tm_sec=0; //midnight
     time_t midnight = mktime(&timeinfo);
     time_t son=midnight-now;
-    // buf=(char*)malloc(300);
-    // if(buf)
-    // {
-    //     bzero(buf,300);
-    //     strftime(buf, 300, "%c", &timeinfo);
-    //     printf("Midnight %s\n",buf);
-    //     free(buf);
-    // }
-    printf("Secs to midnight %d final %d incr %d\n",(uint32_t)son,timeSlotStart,incr);
+    printf("Secs to midnight %d final %d incr %d RECYCLE %dsecs\n",(uint32_t)son,timeSlotStart,incr,theConf.mqttSlots*theConf.pubCycle+1);
     // firstimer will be secs to midnight + timeSlotStart then after that a timer every 86400 secs (1 day)
-
 }
 
 
@@ -808,6 +808,7 @@ void network(void *pArg)
         printf("Could not start Wifi. Reprovisioning!!!\n");
         wifi_prov_mgr_reset_provisioning();
         ESP_ERROR_CHECK(esp_wifi_restore());
+        nvs_flash_erase();
         nvs_flash_init();
         esp_restart();
     }
@@ -827,6 +828,15 @@ void network(void *pArg)
     }
     u8g2_ClearBuffer(&u8g2);
     u8g2_SendBuffer(&u8g2);
+    
+    if (!theConf.nodeConf)
+    {
+        char tmp[12];
+        sprintf(tmp,"%d",theConf.controllerid);
+        printf("Node %s\n",tmp);
+        u8g2_ClearBuffer(&u8g2);
+        ssdString(10,38,tmp,true);
+    }
 //check down time and add it to the config structure
     uint32_t lastfecha;
     fram.read_guard((uint8_t*)&lastfecha);
@@ -842,6 +852,34 @@ void network(void *pArg)
 
 void app_main(void)
 {
+    // mdelay(3000);
+
+    const esp_partition_t *running = esp_ota_get_running_partition();
+
+    esp_app_desc_t running_app_info;
+    if (esp_ota_get_partition_description(running, &running_app_info) == ESP_OK) {
+        printf( "Running firmware version: %s\n", running_app_info.version);
+    }
+
+    esp_ota_img_states_t ota_state;
+    if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
+        // printf("get state %d\n",ota_state);
+        if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+            printf("Verifing previous OTA\n");
+            // run diagnostic function ...
+            bool diagnostic_is_ok =true;;
+            if (diagnostic_is_ok) {
+                printf("Diagnostics completed successfully! Continuing execution ...\n");
+                esp_ota_mark_app_valid_cancel_rollback();
+            } else {
+                printf("Diagnostics failed! Start rollback to the previous version ...\n");
+                esp_ota_mark_app_invalid_rollback_and_reboot();
+            }
+        }
+    }
+    else{
+        printf("Error getting partition\n");
+    }
 
 	flashSem= xSemaphoreCreateBinary();
 	xSemaphoreGive(flashSem);
@@ -885,8 +923,7 @@ void app_main(void)
 #endif
 
     xTaskCreate(&displayManager,"displ",10240,NULL, 10, NULL); 	        // show booting sequence active
-    xTaskCreate(&network,"displ",10240,NULL, 10, NULL); 	        // show booting sequence active
-
+    xTaskCreate(&network,"netw",10240,NULL, 10, NULL); 	        // show booting sequence active
 
     uint32_t ahora=0,dif=0;
     time_t now;

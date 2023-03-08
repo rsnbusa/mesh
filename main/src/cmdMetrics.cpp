@@ -1,6 +1,9 @@
 #define GLOBAL
 #include "globals.h"
 
+extern void write_to_flash();
+
+
 void lafecha(time_t now, char * donde)
 {
     struct tm timeinfo;
@@ -11,11 +14,15 @@ void lafecha(time_t now, char * donde)
 
 int cmdMetrics(void *argument)
 {
+    mqttSender_t mensaje;
+
     cJSON *elcmd=(cJSON *)argument;
 
     if(elcmd)
     {
         cJSON *unit= 		cJSON_GetObjectItem(elcmd,"unit");
+        cJSON *slots= 	    cJSON_GetObjectItem(elcmd,"slots");
+        cJSON *cycle= 	    cJSON_GetObjectItem(elcmd,"cycle");
 
         if(unit )
         {
@@ -51,12 +58,22 @@ int cmdMetrics(void *argument)
                     cJSON_AddStringToObject(root,"Date",buf);
                     free(buf);
                 }
-                //unformatted
+                //formatted for Humans
                 char *lmessage=cJSON_Print(root);
                 cJSON_Delete(root);
+                mensaje.msg=lmessage;            //will be freed by sender
+                mensaje.lenMsg=strlen(lmessage);
+                xQueueSend(mqttSender,&mensaje,0);      // WE DO NOT NOT NOT start the Mqtt server. It its time based
+                // int mqtterr=esp_mqtt_client_publish(clientCloud,infoQueue, (char*)lmessage,strlen(lmessage) ,2,0);
+                // free(lmessage);
 
-                int mqtterr=esp_mqtt_client_publish(clientCloud,infoQueue, (char*)lmessage,strlen(lmessage) ,2,0);
-                free(lmessage);
+                if(slots)
+                    theConf.mqttSlots=slots->valueint;
+                if(cycle)
+                    theConf.pubCycle=cycle->valueint;
+                if (slots || cycle)
+                    write_to_flash();
+
                 return ESP_OK;
             }
         }

@@ -38,6 +38,14 @@ extern "C"{
 #include <wifi_provisioning/manager.h>
 #include <wifi_provisioning/scheme_ble.h>
 #include "esp_system.h"
+#include "spi_mod.h"
+
+#include "esp_ota_ops.h"
+#include "esp_http_client.h"
+#include "esp_flash_partitions.h"
+#include "esp_partition.h"
+
+#include <esp_log.h>
 
 void app_main();
 }

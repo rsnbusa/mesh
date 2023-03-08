@@ -1,12 +1,17 @@
 #define GLOBAL
 #include "globals.h"
 
+extern void write_to_flash();
+
 int cmdUpdate(void *argument)
 {
     cJSON *elcmd=(cJSON *)argument;
     cJSON *unit= 		cJSON_GetObjectItem(elcmd,"unit");
     cJSON *kwh= 		cJSON_GetObjectItem(elcmd,"kwh");
     cJSON *bpk= 		cJSON_GetObjectItem(elcmd,"bpk");
+    cJSON *slots= 	    cJSON_GetObjectItem(elcmd,"slots");
+    cJSON *cycle= 	    cJSON_GetObjectItem(elcmd,"cycle");
+
     if(unit )
     {
         printf("Update Meter cmd %d ",unit->valueint);
@@ -25,6 +30,12 @@ int cmdUpdate(void *argument)
                 medidor[unitt].bpk=bpk->valueint;
             fram.write_meter(unitt, (uint8_t*)&medidor[unitt],sizeof(meterType));
         }
+            if(slots)
+                theConf.mqttSlots=slots->valueint;
+            if(cycle)
+                theConf.pubCycle=cycle->valueint;
+            if (slots || cycle)
+                write_to_flash();
         return ESP_OK;
     }
 
