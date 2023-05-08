@@ -21,6 +21,11 @@ typedef struct fram{
     struct arg_end *end;
 } framArgs_t;
 
+typedef struct logl{
+    struct arg_int *level;        
+    struct arg_end *end;
+} loglevel_t;
+
 typedef struct {
     int unit;  // the PCNT unit that originated an interrupt
     uint32_t status; // information on the event type that caused the interrupt
@@ -77,6 +82,16 @@ typedef struct config {
     uint32_t    downtime;
     uint16_t    mqttSlots,pubCycle;
     uint16_t    nodeConf;
+    uint16_t    loglevel, configured;
 } config_flash;
 
 #endif
+
+/*
+    ESP_LOG_NONE,       
+    ESP_LOG_ERROR,      
+    ESP_LOG_WARN,       
+    ESP_LOG_INFO,       
+    ESP_LOG_DEBUG,      
+    ESP_LOG_VERBOSE 
+    */

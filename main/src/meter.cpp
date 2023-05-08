@@ -15,7 +15,17 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 void mqtt_sender(void *pArg);
+static void    mqtt_app_start();
 
+static const uint8_t MESH_ID[6] = { 0x77, 0x77, 0x77, 0x77, 0x77, 0x76};
+static bool is_running = true;
+static mesh_addr_t mesh_parent_addr;
+static int mesh_layer = -1;
+static esp_ip4_addr_t s_current_ip;
+// static mesh_addr_t s_route_table[CONFIG_MESH_ROUTE_TABLE_SIZE];
+// static int s_route_table_size = 0;
+static SemaphoreHandle_t s_route_table_lock = NULL;
+static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE*6+1];
 
 
 void mdelay(uint32_t cuanto)
@@ -32,6 +42,59 @@ uint32_t xmillis()
 uint32_t xmillisFromISR()
 {
 	return xTaskGetTickCountFromISR() * portTICK_PERIOD_MS;
+}
+
+
+
+void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
+{
+        mqttSender_t mqttMsg;
+
+    // if (data->data[0] == CMD_ROUTE_TABLE) {
+    //     int size =  data->size - 1;
+    //     if (s_route_table_lock == NULL || size%6 != 0) {
+    //         ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unexpected size");
+    //         return;
+    //     }
+    //     xSemaphoreTake(s_route_table_lock, portMAX_DELAY);
+    //     s_route_table_size = size / 6;
+    //     for (int i=0; i < s_route_table_size; ++i) {
+    //         ESP_LOGI(MESH_TAG, "Received Routing table [%d] "
+    //                 MACSTR, i, MAC2STR(data->data + 6*i + 1));
+    //     }
+    //     memcpy(&s_route_table, data->data + 1, size);
+    //     xSemaphoreGive(s_route_table_lock);
+    // } else if (data->data[0] == CMD_KEYPRESSED) {
+    //     if (data->size != 7) {
+    //         ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unexpected size");
+    //         return;
+    //     }
+    //     ESP_LOGW(MESH_TAG, "Keypressed detected on node: "
+    //             MACSTR, MAC2STR(data->data + 1));
+    // } else {
+    //     ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unknown command");
+    // }
+    printf("Msg in [%s] from " MACSTR "\n",(char *)data->data, MAC2STR(from->addr));
+    char *mensaje=(char *)malloc(1000);
+    if(!mensaje)
+    {
+        printf("Now RAM for mesh msg\n");
+        return;
+    }
+    strcpy(mensaje,(char *)data->data);
+    mqttMsg.msg=mensaje;
+    mqttMsg.lenMsg=strlen(mensaje);
+    printf("Sending mqtt mesh msg [%s]\n",mensaje);
+     if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)
+        {
+            printf("Error queueing msg\n");
+            if(mqttMsg.msg)
+                free(mqttMsg.msg);  //due to failure
+        }
+        else
+            //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
+            xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send everything now !!!!!
+    
 }
 
 
@@ -109,6 +172,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         // gpio_set_level((gpio_num_t)2,1);
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+
     }
 }
 
@@ -428,6 +492,8 @@ static void mqtt_app_start(void)
 		mqttSender = xQueueCreate( 20, sizeof( mqttSender_t ) );
 		if(!mqttSender)
 			printf("Failed queue Sender\n");
+        else
+            printf("Mqttsender created\n"); 
 
 		clientCloud=NULL;
 
@@ -444,6 +510,245 @@ static void mqtt_app_start(void)
 	    	printf("Not configured Mqtt\n");	//should crash. No conn with Host defeats the purpose but lets save beats at least
 	    	return;
 	    }
+}
+
+void esp_mesh_p2p_rx_main(void *arg)
+{
+    int recv_count = 0;
+    uint32_t aca;
+    esp_err_t err;
+    mesh_addr_t from;
+    int send_count = 0;
+    mesh_data_t data;
+    int flag = 0;
+    data.data = (uint8_t*)malloc(1000);;
+    data.size = 1000;
+    is_running = true;
+        mqttSender_t mqttMsg;
+
+
+    while (true) {
+        data.size = 1000;
+        aca=0;
+        err = esp_mesh_recv(&from, &data, portMAX_DELAY, &flag, NULL, 0);
+        if (err != ESP_OK || !data.size) {
+            ESP_LOGE(MESH_TAG, "err:0x%x, size:%d", err, data.size);
+            continue;
+        }      
+        memcpy(&aca,data.data,4);
+        if (aca!=0xffffffff)
+        {
+            esp_log_buffer_hex("NADA",data.data,data.size);
+            printf(
+                        "%s [L:%d] parent:"MACSTR", receive from "MACSTR", size:%d, heap:%d, flag:%d[err:0x%x, proto:%d, tos:%d]\n",data.data,
+                        mesh_layer, MAC2STR(mesh_parent_addr.addr), MAC2STR(from.addr),
+                        data.size, esp_get_minimum_free_heap_size(), flag, err, data.proto,
+                        data.tos);
+        
+
+         char *mensaje=(char *)malloc(1000);
+    if(!mensaje)
+    {
+        printf("Now RAM for mesh msg\n");
+        return;
+    }
+    strcpy(mensaje,(char *)data.data);
+    mqttMsg.msg=mensaje;
+    mqttMsg.lenMsg=strlen(mensaje);
+    printf("Sending mqtt mesh msg [%s]\n",mensaje);
+     if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)
+        {
+            printf("Error queueing msg\n");
+            if(mqttMsg.msg)
+                free(mqttMsg.msg);  //due to failure
+        }
+        else
+            //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
+            xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send everything now !!!!!
+        }
+    }
+}
+
+
+
+void mesh_event_handler(void *arg, esp_event_base_t event_base,
+                        int32_t event_id, void *event_data)
+{
+    mesh_addr_t id = {0,};
+    static uint8_t last_layer = 0;
+// printf("Mesh event %d \n",event_id);
+
+    switch (event_id) {
+    case MESH_EVENT_STARTED: {
+        esp_mesh_get_id(&id);
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_MESH_STARTED>ID:"MACSTR"", MAC2STR(id.addr));
+        mesh_layer = esp_mesh_get_layer();
+    }
+    break;
+    case MESH_EVENT_STOPPED: {
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_STOPPED>");
+        mesh_layer = esp_mesh_get_layer();
+    }
+    break;
+    case MESH_EVENT_CHILD_CONNECTED: {
+        mesh_event_child_connected_t *child_connected = (mesh_event_child_connected_t *)event_data;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_CHILD_CONNECTED>aid:%d, "MACSTR"",
+                 child_connected->aid,
+                 MAC2STR(child_connected->mac));
+    }
+    break;
+    case MESH_EVENT_CHILD_DISCONNECTED: {
+        mesh_event_child_disconnected_t *child_disconnected = (mesh_event_child_disconnected_t *)event_data;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_CHILD_DISCONNECTED>aid:%d, "MACSTR"",
+                 child_disconnected->aid,
+                 MAC2STR(child_disconnected->mac));
+    }
+    break;
+    case MESH_EVENT_ROUTING_TABLE_ADD: {
+        mesh_event_routing_table_change_t *routing_table = (mesh_event_routing_table_change_t *)event_data;
+        ESP_LOGW(MESH_TAG, "<MESH_EVENT_ROUTING_TABLE_ADD>add %d, new:%d",
+                 routing_table->rt_size_change,
+                 routing_table->rt_size_new);
+    }
+    break;
+    case MESH_EVENT_ROUTING_TABLE_REMOVE: {
+        mesh_event_routing_table_change_t *routing_table = (mesh_event_routing_table_change_t *)event_data;
+        ESP_LOGW(MESH_TAG, "<MESH_EVENT_ROUTING_TABLE_REMOVE>remove %d, new:%d",
+                 routing_table->rt_size_change,
+                 routing_table->rt_size_new);
+    }
+    break;
+    case MESH_EVENT_NO_PARENT_FOUND: {
+        mesh_event_no_parent_found_t *no_parent = (mesh_event_no_parent_found_t *)event_data;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_NO_PARENT_FOUND>scan times:%d",
+                 no_parent->scan_times);
+    }
+    /* TODO handler for the failure */
+    break;
+    case MESH_EVENT_PARENT_CONNECTED: {
+        mesh_event_connected_t *connected = (mesh_event_connected_t *)event_data;
+        esp_mesh_get_id(&id);
+        mesh_layer = connected->self_layer;
+        memcpy(&mesh_parent_addr.addr, connected->connected.bssid, 6);
+        ESP_LOGI(MESH_TAG,
+                 "<MESH_EVENT_PARENT_CONNECTED>layer:%d-->%d, parent:"MACSTR"%s, ID:"MACSTR"",
+                 last_layer, mesh_layer, MAC2STR(mesh_parent_addr.addr),
+                 esp_mesh_is_root() ? "<ROOT>" :
+                 (mesh_layer == 2) ? "<layer2>" : "", MAC2STR(id.addr));
+        last_layer = mesh_layer;
+        mesh_netifs_start(esp_mesh_is_root());
+    }
+    break;
+    case MESH_EVENT_PARENT_DISCONNECTED: {
+        mesh_event_disconnected_t *disconnected = (mesh_event_disconnected_t *)event_data;
+        ESP_LOGI(MESH_TAG,
+                 "<MESH_EVENT_PARENT_DISCONNECTED>reason:%d",
+                 disconnected->reason);
+        mesh_layer = esp_mesh_get_layer();
+        mesh_netifs_stop();
+    }
+    break;
+    case MESH_EVENT_LAYER_CHANGE: {
+        mesh_event_layer_change_t *layer_change = (mesh_event_layer_change_t *)event_data;
+        mesh_layer = layer_change->new_layer;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_LAYER_CHANGE>layer:%d-->%d%s",
+                 last_layer, mesh_layer,
+                 esp_mesh_is_root() ? "<ROOT>" :
+                 (mesh_layer == 2) ? "<layer2>" : "");
+        last_layer = mesh_layer;
+    }
+    break;
+    case MESH_EVENT_ROOT_ADDRESS: {
+        mesh_event_root_address_t *root_addr = (mesh_event_root_address_t *)event_data;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_ROOT_ADDRESS>root address:"MACSTR"",
+                 MAC2STR(root_addr->addr));
+    }
+    break;
+    case MESH_EVENT_VOTE_STARTED: {
+        mesh_event_vote_started_t *vote_started = (mesh_event_vote_started_t *)event_data;
+        ESP_LOGI(MESH_TAG,
+                 "<MESH_EVENT_VOTE_STARTED>attempts:%d, reason:%d, rc_addr:"MACSTR"",
+                 vote_started->attempts,
+                 vote_started->reason,
+                 MAC2STR(vote_started->rc_addr.addr));
+    }
+    break;
+    case MESH_EVENT_VOTE_STOPPED: {
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_VOTE_STOPPED>");
+        break;
+    }
+    case MESH_EVENT_ROOT_SWITCH_REQ: {
+        mesh_event_root_switch_req_t *switch_req = (mesh_event_root_switch_req_t *)event_data;
+        ESP_LOGI(MESH_TAG,
+                 "<MESH_EVENT_ROOT_SWITCH_REQ>reason:%d, rc_addr:"MACSTR"",
+                 switch_req->reason,
+                 MAC2STR( switch_req->rc_addr.addr));
+    }
+    break;
+    case MESH_EVENT_ROOT_SWITCH_ACK: {
+        /* new root */
+        mesh_layer = esp_mesh_get_layer();
+        esp_mesh_get_parent_bssid(&mesh_parent_addr);
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_ROOT_SWITCH_ACK>layer:%d, parent:"MACSTR"", mesh_layer, MAC2STR(mesh_parent_addr.addr));
+    }
+    break;
+    case MESH_EVENT_TODS_STATE: {
+        mesh_event_toDS_state_t *toDs_state = (mesh_event_toDS_state_t *)event_data;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_TODS_REACHABLE>state:%d", *toDs_state);
+    }
+    break;
+    case MESH_EVENT_ROOT_FIXED: {
+        mesh_event_root_fixed_t *root_fixed = (mesh_event_root_fixed_t *)event_data;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_ROOT_FIXED>%s",
+                 root_fixed->is_fixed ? "fixed" : "not fixed");
+    }
+    break;
+    case MESH_EVENT_ROOT_ASKED_YIELD: {
+        mesh_event_root_conflict_t *root_conflict = (mesh_event_root_conflict_t *)event_data;
+        ESP_LOGI(MESH_TAG,
+                 "<MESH_EVENT_ROOT_ASKED_YIELD>"MACSTR", rssi:%d, capacity:%d",
+                 MAC2STR(root_conflict->addr),
+                 root_conflict->rssi,
+                 root_conflict->capacity);
+    }
+    break;
+    case MESH_EVENT_CHANNEL_SWITCH: {
+        mesh_event_channel_switch_t *channel_switch = (mesh_event_channel_switch_t *)event_data;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_CHANNEL_SWITCH>new channel:%d", channel_switch->channel);
+    }
+    break;
+    case MESH_EVENT_SCAN_DONE: {
+        mesh_event_scan_done_t *scan_done = (mesh_event_scan_done_t *)event_data;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_SCAN_DONE>number:%d",
+                 scan_done->number);
+    }
+    break;
+    case MESH_EVENT_NETWORK_STATE: {
+        mesh_event_network_state_t *network_state = (mesh_event_network_state_t *)event_data;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_NETWORK_STATE>is_rootless:%d",
+                 network_state->is_rootless);
+    }
+    break;
+    case MESH_EVENT_STOP_RECONNECTION: {
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_STOP_RECONNECTION>");
+    }
+    break;
+    case MESH_EVENT_FIND_NETWORK: {
+        mesh_event_find_network_t *find_network = (mesh_event_find_network_t *)event_data;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_FIND_NETWORK>new channel:%d, router BSSID:"MACSTR"",
+                 find_network->channel, MAC2STR(find_network->router_bssid));
+    }
+    break;
+    case MESH_EVENT_ROUTER_SWITCH: {
+        mesh_event_router_switch_t *router_switch = (mesh_event_router_switch_t *)event_data;
+        ESP_LOGI(MESH_TAG, "<MESH_EVENT_ROUTER_SWITCH>new router:%s, channel:%d, "MACSTR"",
+                 router_switch->ssid, router_switch->channel, MAC2STR(router_switch->bssid));
+    }
+    break;
+    default:
+        ESP_LOGI(MESH_TAG, "unknown id:%d", event_id);
+        break;
+    }
 }
 
 
@@ -637,7 +942,6 @@ void mqtt_sender(void *pArg)        // MQTTT data sender task
     while(true)
     {
         xEventGroupWaitBits(wifi_event_group,SENDMQTT_BIT,pdFALSE,true,portMAX_DELAY);    //wait forever, this is the starting gun
-
         xEventGroupClearBits(wifi_event_group, SENDMQTT_BIT);	// clear bit to wait on for next msg
 
         starttest=xmillis();
@@ -725,8 +1029,10 @@ void mqtt_sender(void *pArg)        // MQTTT data sender task
     localtime_r(&now, &timeinfo);
     mensaje.msg=sendData(true);            //will be freed by sender, Force sending first caller to allow incoming messages
     if(mensaje.msg)
+    {
         mensaje.lenMsg=strlen(mensaje.msg);
-    printf("FirstTimer %s\n",mensaje.msg);
+        printf("FirstTimer %s\n",mensaje.msg);
+    }
     if(mensaje.msg!=NULL)   //if somtehting to send do it
     {
         if(xQueueSend(mqttSender,&mensaje,0)!=pdPASS)
@@ -778,12 +1084,45 @@ void set_senddata_timer()
     // firstimer will be secs to midnight + timeSlotStart then after that a timer every 86400 secs (1 day)
 }
 
-
-
-void network(void *pArg)
+void post_root()
 {
+    u8g2_ClearBuffer(&u8g2);
+    ssdString(10,38,(char*)"Time",true);
+    sntpget();
+    u8g2_ClearBuffer(&u8g2);
+    ssdString(10,38,(char*)"MQTT",true);
 
+    // xTaskCreate(&testMqtt,"mqtt",10240,fecha, 5, NULL);
+    firstTimer=xTimerCreate("Timer",pdMS_TO_TICKS(2000),pdFALSE,( void * ) 0, firstCallback);
+    if( xTimerStart(firstTimer, 0 ) != pdPASS )
+    {
+        printf("First Timer failed\n");
+    }
+    u8g2_ClearBuffer(&u8g2);
+    u8g2_SendBuffer(&u8g2);
+    
+    if (!theConf.nodeConf)
+    {
+        char tmp[12];
+        sprintf(tmp,"%d",theConf.controllerid);
+        printf("Node %s\n",tmp);
+        u8g2_ClearBuffer(&u8g2);
+        ssdString(10,38,tmp,true);
+    }
+//check down time and add it to the config structure
+    uint32_t lastfecha;
+    fram.read_guard((uint8_t*)&lastfecha);
+    if(lastfecha>0)
+    {
+        time_t now;
+        time(&now);
+        printf("Down time in seconds %d\n",(uint32_t)now-lastfecha);
+        theConf.downtime+=(uint32_t)now-lastfecha;
+    }
+}
 
+int network()
+{
    // printf("Starting network\n");
     app_wifi_init();
 
@@ -797,11 +1136,15 @@ void network(void *pArg)
     bool provisioned = false;
     /* Let's find out if the device is provisioned */
   esp_err_t err=wifi_prov_mgr_is_provisioned(&provisioned);
-    // ESP_ERROR_CHECK(wifi_prov_mgr_deinit());
+
 
     u8g2_ClearBuffer(&u8g2);
     ssdString(10,38,provisioned?(char*)"WiFI":(char*)"PROV",true);
-
+    if(provisioned)
+    {
+        wifi_prov_mgr_deinit();
+        return 0;
+    }
     err = app_wifi_start(POP_TYPE_NONE,(char*)"PROV_METER",(char *)"csttpstt");
     if (err != ESP_OK) {
         //fail only(i guess) happens when had a SSID and not accesible,s o lets reprovision it
@@ -812,7 +1155,7 @@ void network(void *pArg)
         nvs_flash_init();
         esp_restart();
     }
-
+    esp_restart();  // either way restart
     u8g2_ClearBuffer(&u8g2);
     ssdString(10,38,(char*)"Time",true);
     sntpget();
@@ -847,12 +1190,35 @@ void network(void *pArg)
         printf("Down time in seconds %d\n",(uint32_t)now-lastfecha);
         theConf.downtime+=(uint32_t)now-lastfecha;
     }
-    vTaskDelete(NULL);
+    return 1;
+}
+
+void ip_event_handler(void *arg, esp_event_base_t event_base,
+                      int32_t event_id, void *event_data)
+{
+    ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
+    ESP_LOGI(MESH_TAG, "<IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip));
+    s_current_ip.addr = event->ip_info.ip.addr;
+#if !CONFIG_MESH_USE_GLOBAL_DNS_IP
+    esp_netif_t *netif = event->esp_netif;
+    esp_netif_dns_info_t dns;
+    ESP_ERROR_CHECK(esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns));
+    mesh_netif_start_root_ap(esp_mesh_is_root(), dns.ip.u_addr.ip4.addr);
+#endif
+    // esp_mesh_comm_mqtt_task_start();
+         if (esp_mesh_is_root()) {
+    mqtt_app_start();
+    post_root();
+ }
 }
 
 void app_main(void)
 {
     // mdelay(3000);
+    MESH_TAG=(char*)malloc(5);
+    strcpy(MESH_TAG,"Mes");
+
+    // OTA reboot section 
 
     const esp_partition_t *running = esp_ota_get_running_partition();
 
@@ -881,6 +1247,8 @@ void app_main(void)
         printf("Error getting partition\n");
     }
 
+// end OTA section
+
 	flashSem= xSemaphoreCreateBinary();
 	xSemaphoreGive(flashSem);
 
@@ -900,6 +1268,8 @@ void app_main(void)
         erase_config();
     }
 
+    esp_log_level_set("*",(esp_log_level_t)theConf.loglevel);
+
 	theConf.lastResetCode=esp_rom_get_reset_reason(0);
     theConf.bootcount++;
 
@@ -912,7 +1282,7 @@ void app_main(void)
 
     pcnt_evt_queue = xQueueCreate(10, sizeof(pcnt_evt_t));
 
-    init_fram(true);
+   init_fram(true);
     // printf("Medidor size %d METRSIZE %d Maxbytes %d\n",sizeof(meterType),DATAEND-BEATSTART,fram.intframWords);
 
     for(int a=0;a<MAXDEVSS;a++)
@@ -923,7 +1293,71 @@ void app_main(void)
 #endif
 
     xTaskCreate(&displayManager,"displ",10240,NULL, 10, NULL); 	        // show booting sequence active
-    xTaskCreate(&network,"netw",10240,NULL, 10, NULL); 	        // show booting sequence active
+    
+    ESP_ERROR_CHECK(esp_netif_init());
+   esp_event_loop_create_default();
+    /*  crete network interfaces for mesh (only station instance saved for further manipulation, soft AP instance ignored */
+    ESP_ERROR_CHECK(mesh_netifs_init(mesh_recv_cb));
+    
+    wifi_init_config_t configg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&configg));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_FLASH));
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+    ESP_ERROR_CHECK(esp_wifi_start());
+// mesh stuff
+// router name and password from wifi configuration
+wifi_config_t config;
+esp_wifi_get_config( WIFI_IF_STA,&config);
+printf("SSID %s password %s\n",config.ap.ssid,config.ap.password);
+
+char missid[30],mipassw[10];
+
+// if(strlen((char*)config.ap.ssid)==0)
+// {
+ strcpy(missid,"Porton");
+ strcpy(mipassw,"csttpstt");
+
+// }
+// else
+// {
+//     strcpy(missid,(char*)config.ap.ssid);
+//     strcpy(mipassw,(char*)config.ap.password);
+// }
+
+        /*  mesh initialization */
+    ESP_ERROR_CHECK(esp_mesh_init());
+    ESP_ERROR_CHECK(esp_event_handler_register(MESH_EVENT, ESP_EVENT_ANY_ID, &mesh_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_mesh_set_max_layer(CONFIG_MESH_MAX_LAYER));
+    ESP_ERROR_CHECK(esp_mesh_set_vote_percentage(1));
+    ESP_ERROR_CHECK(esp_mesh_set_ap_assoc_expire(10));
+    mesh_cfg_t cfg = MESH_INIT_CONFIG_DEFAULT();
+    /* mesh ID */
+    memcpy((uint8_t *) &cfg.mesh_id, MESH_ID, 6);
+    /* router */
+    cfg.channel = CONFIG_MESH_CHANNEL;
+    
+    cfg.router.ssid_len =strlen( missid);
+    memcpy((uint8_t *) &cfg.router.ssid, missid, cfg.router.ssid_len);
+    memcpy((uint8_t *) &cfg.router.password, mipassw,
+           strlen(mipassw));
+    /* mesh softAP */
+    printf("cfg ssid %s password %s\n",cfg.router.ssid,cfg.router.password);
+    ESP_ERROR_CHECK(esp_mesh_set_ap_authmode((wifi_auth_mode_t)CONFIG_MESH_AP_AUTHMODE));
+    cfg.mesh_ap.max_connection = CONFIG_MESH_AP_CONNECTIONS;
+    cfg.mesh_ap.nonmesh_max_connection = CONFIG_MESH_NON_MESH_AP_CONNECTIONS;
+    memcpy((uint8_t *) &cfg.mesh_ap.password, "csttpstt",
+            8);
+    // memcpy((uint8_t *) &cfg.mesh_ap.password, config.ap.password,
+    //        strlen((char*)config.ap.password));
+    ESP_ERROR_CHECK(esp_mesh_set_config(&cfg));
+    /* mesh start */
+    ESP_ERROR_CHECK(esp_mesh_start());
+    ESP_LOGI(MESH_TAG, "mesh starts successfully, heap:%d, %s\n",  esp_get_free_heap_size(),
+             esp_mesh_is_root_fixed() ? "root fixed" : "root not fixed");
+
+     xTaskCreate(&esp_mesh_p2p_rx_main,"mesh",10240,NULL, 10, NULL); 	        // show booting sequence active
+
 
     uint32_t ahora=0,dif=0;
     time_t now;

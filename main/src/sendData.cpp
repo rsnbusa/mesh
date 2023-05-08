@@ -51,10 +51,12 @@ char * sendData(bool forced)
 
         // formatted for Human Inspection 
         if (fueron)
-            lmessage=cJSON_Print(root);
+            lmessage=cJSON_PrintUnformatted(root);
         else
             lmessage=NULL;      //nothing to send
     }
     cJSON_Delete(root);     //gone with this structure free it
+    // if(lmessage)
+    //     printf("SendData [%s]\n",lmessage);
     return lmessage;        //must be freed by caller
 }

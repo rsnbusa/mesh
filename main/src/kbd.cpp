@@ -9,6 +9,7 @@ uint8_t wmeter=0;
 extern void erase_config();
 extern void write_to_flash();
 extern void start_ota();
+extern char * sendData(bool forced);
 
 static void lafecha(time_t now, char * donde)
 {
@@ -359,13 +360,26 @@ int cmdConfig(int argc, char **argv)
   lafecha(theConf.bornDate,buf);
   fram.read_guard((uint8_t*)&lastwrite);
   lafecha(lastwrite,buf2);
-  printf("======= Controller Configuration  =======\n");
-  printf("Firmware Version:%s SSID:%s\n", running_app_info.version,conf.sta.ssid);
-  printf("Id : %d  Address: %s Created %s Slot %d  Cycle %d\n",theConf.controllerid,theConf.direccion,buf,theConf.mqttSlots,theConf.pubCycle);
-  printf("Provincia: %d Canton: %d Parroquia:%d CodigoPostal:%d\n",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal);
+
+  uint8_t *my_mac = mesh_netif_get_station_mac();
+  printf("======= Mesh Configuration =======\n");
+  printf("Firmware Version:%s Root:%s MAC:" MACSTR " SSID:%s LogLevel:%d\n", running_app_info.version,esp_mesh_is_root()?"Yes":"No",MAC2STR(my_mac),
+  conf.sta.ssid,theConf.loglevel);
+  if(esp_mesh_is_root())
+  {
+    printf("Id : %d  Address: %s Created %s Slot %d  Cycle %d\n",theConf.controllerid,theConf.direccion,buf,theConf.mqttSlots,theConf.pubCycle);
+    printf("Provincia: %d Canton: %d Parroquia:%d CodigoPostal:%d\n",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal);
+    printf("Command Queue %s\n",cmdQueue);
+    printf("Info Queue %s\n",infoQueue);
+  }
   printf("BootCount %d LastReset %d Reason %d DownTime %d lastupdate %s\n",theConf.bootcount,theConf.lastResetCode,theConf.lastResetCode,theConf.downtime,buf2);
-  printf("Command Queue %s\n",cmdQueue);
-  printf("Info Queue %s\n",infoQueue);
+
+  esp_mesh_get_routing_table((mesh_addr_t *) &s_route_table,CONFIG_MESH_ROUTE_TABLE_SIZE * 6, &s_route_table_size);
+  printf("Mesh Network\n");
+  for (int a=0;a<s_route_table_size;a++)
+  {
+    printf("\tMAC[%d]:" MACSTR " %s\n",a,MAC2STR(s_route_table[a].addr),MAC_ADDR_EQUAL(s_route_table[a].addr, my_mac)?"ME":"");
+  }
   return 0;
 }
 
@@ -379,9 +393,78 @@ int cmdErase(int argc, char **argv)
 
 int cmdSend(int argc, char **argv)
 {
+      mqttSender_t mensaje;
+      mensaje.msg=sendData(true);
+  
+      if(mensaje.msg)
+      {
+        mensaje.lenMsg=strlen(mensaje.msg);
+        printf("KBD Send Mqtt [%s] size %d\n",mensaje.msg,mensaje.lenMsg);
+      }
+      if(xQueueSend(mqttSender,&mensaje,0)!=pdPASS)
+      {
+            printf("Error queueing msg\n");
+            if(mensaje.msg)
+                free(mensaje.msg);  //due to failure
+      }
   printf("Setting Mqtt Send Bit");
   xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// clear bit to wait on
   printf("done\n");
+  return 0;
+}
+
+int cmdSendMesh(int argc, char **argv)
+{
+  mesh_data_t data;
+  if (!esp_mesh_is_root())
+  {
+    char *mensaje;
+    mensaje=sendData(true);
+    if(!mensaje)
+    {
+      mensaje=(char*)malloc(100);
+      bzero(mensaje,100);
+      strcpy(mensaje,"No hay data");
+    }
+      data.proto = MESH_PROTO_BIN;
+      data.tos = MESH_TOS_P2P;
+      data.data=(uint8_t*)mensaje;
+      data.size=strlen(mensaje)+1;
+      printf("Sending Root [%s]...",(char*)data.data);
+      int err = esp_mesh_send(NULL, &data, 0, NULL, 0);
+      // int err = esp_mesh_send(NULL, &data, MESH_DATA_P2P, NULL, 0);
+      printf("done %d\n",err);
+      free(mensaje);
+  }
+  else{
+      uint8_t *my_mac = mesh_netif_get_station_mac();
+      esp_mesh_get_routing_table((mesh_addr_t *) &s_route_table,CONFIG_MESH_ROUTE_TABLE_SIZE * 6, &s_route_table_size);
+      printf("Send Mesh Network\n");
+      
+      cJSON *root=cJSON_CreateObject();
+      cJSON_AddStringToObject(root,"CMD","host");
+      cJSON_AddStringToObject(root,"SSID","Porton");
+      cJSON_AddStringToObject(root,"PSSW","csttpstt");
+      char *lmessage=cJSON_PrintUnformatted(root);
+      if(lmessage)
+      {
+        printf("Sending %s\ to %d stations\n",lmessage,s_route_table_size);
+        data.data=(uint8_t*)lmessage;
+        data.size=strlen(lmessage);
+
+        for (int a=0;a<s_route_table_size;a++)
+        {
+          // if(!MAC_ADDR_EQUAL(s_route_table[a].addr, my_mac))  //not me
+          // {
+            int err = esp_mesh_send(&s_route_table[a], &data, MESH_DATA_FROMDS, NULL, 0);
+            // int err = esp_mesh_send(&s_route_table[a], &data, MESH_DATA_P2P, NULL, 0);
+            printf("\tSending to MAC[%d]:" MACSTR "\n",a,MAC2STR(s_route_table[a].addr));
+          // }
+        }
+        free(lmessage);
+      }
+      cJSON_Delete(root);     //gone with this structure free it
+  }
   return 0;
 }
 
@@ -392,31 +475,54 @@ int cmdOTA(int argc, char **argv)
   return 0;
 }
 
+int cmdLogLevel(int argc, char **argv)
+{
+      int nerrors = arg_parse(argc, argv, (void **)&loglevel);
+    if (nerrors != 0) {
+        arg_print_errors(stderr, loglevel.end, argv[0]);
+        return 0;
+    }
+  if (loglevel.level->count) 
+  {
+      int lev=loglevel.level->ival[0];
+      printf("Level set to %d\n",lev);
+      theConf.loglevel=lev;
+      write_to_flash();
+      esp_log_level_set("*",(esp_log_level_t)theConf.loglevel);
+
+  }
+  return 0;
+}
+
 void kbd()
 {
-    esp_console_repl_t       *repl=NULL;
-    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    repl_config.prompt=(char*)"Meter>";
-    esp_console_dev_uart_config_t uart_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_console_new_repl_uart(&uart_config, &repl_config, &repl));
+  esp_console_repl_t       *repl=NULL;
+  esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+  repl_config.prompt=(char*)"Meter>";
+  esp_console_dev_uart_config_t uart_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
+  ESP_ERROR_CHECK(esp_console_new_repl_uart(&uart_config, &repl_config, &repl));
 
-    framArg.format =                arg_str0(NULL, "format", "slow | fast", "Format Fram");
-    framArg.guard =                 arg_str0(NULL, "guard", "Write or Read", "Set/Get Guard");
-    framArg.address =               arg_int0(NULL, "add", "address", "Address to use in write");
-    framArg.write =                 arg_int0(NULL, "write", "value", "Write to Fram a  Val");
-    framArg.read =                  arg_int0(NULL, "read", "address", "Read from Fram Add ");
-    framArg.time =                  arg_int0(NULL, "time", "unix time", "Write current date to fram ");
-    framArg.fmeter =                arg_int0(NULL, "fmeter", "meter", "Format a meter ");
-    framArg.wmeter =                arg_int0(NULL, "workm", "meter", "Set working meter number");
-    framArg.midw =                  arg_str0(NULL, "wmid","id",  "Set id of working meter ");
-    framArg.midr =                  arg_int0(NULL, "rmid","dummy",  "Read id of working meter ");
-    framArg.kwhstart =              arg_int0(NULL, "kwh", "value", "Set kwh start of working meter ");
-    framArg.rstart =                arg_int0(NULL, "rkwh", "dummy", "Read kwh start of working meter ");
-    framArg.mtime =                 arg_int0(NULL, "metert", "1 write 0 read", "Write/read working meter date ");
-    framArg.mbeat =                 arg_int0(NULL, "beat", "value", "Write beat of working meter ");
-    framArg.dumpm =                 arg_int0(NULL, "dump", "meter#", "Dump meter data ");
-    framArg.initm =                 arg_int0(NULL, "initm", "meter#", "Init a meter ");
-    framArg.end =                   arg_end(16);
+  framArg.format =                arg_str0(NULL, "format", "slow | fast", "Format Fram");
+  framArg.guard =                 arg_str0(NULL, "guard", "Write or Read", "Set/Get Guard");
+  framArg.address =               arg_int0(NULL, "add", "address", "Address to use in write");
+  framArg.write =                 arg_int0(NULL, "write", "value", "Write to Fram a  Val");
+  framArg.read =                  arg_int0(NULL, "read", "address", "Read from Fram Add ");
+  framArg.time =                  arg_int0(NULL, "time", "unix time", "Write current date to fram ");
+  framArg.fmeter =                arg_int0(NULL, "fmeter", "meter", "Format a meter ");
+  framArg.wmeter =                arg_int0(NULL, "workm", "meter", "Set working meter number");
+  framArg.midw =                  arg_str0(NULL, "wmid","id",  "Set id of working meter ");
+  framArg.midr =                  arg_int0(NULL, "rmid","dummy",  "Read id of working meter ");
+  framArg.kwhstart =              arg_int0(NULL, "kwh", "value", "Set kwh start of working meter ");
+  framArg.rstart =                arg_int0(NULL, "rkwh", "dummy", "Read kwh start of working meter ");
+  framArg.mtime =                 arg_int0(NULL, "metert", "1 write 0 read", "Write/read working meter date ");
+  framArg.mbeat =                 arg_int0(NULL, "beat", "value", "Write beat of working meter ");
+  framArg.dumpm =                 arg_int0(NULL, "dump", "meter#", "Dump meter data ");
+  framArg.initm =                 arg_int0(NULL, "initm", "meter#", "Init a meter ");
+  framArg.end =                   arg_end(16);
+
+
+  loglevel.level=                 arg_int0(NULL, "level", "0-5(None-Error-Warn-Info-Debug-Verbose)", "Log Level");
+  loglevel.end=                   arg_end(1);
 
     const esp_console_cmd_t fram_cmd = {
         .command = "fram",
@@ -451,7 +557,7 @@ void kbd()
     };
 
     const esp_console_cmd_t send_cmd = {
-        .command = "send",
+        .command = "sendMqtt",
         .help = "Send Mqtt Msgsn",
         .hint = NULL,
         .func = &cmdSend,
@@ -474,6 +580,22 @@ void kbd()
         .argtable = NULL
     };
 
+    const esp_console_cmd_t sendmesh_cmd = {
+        .command = "sendMesh",
+        .help = "Send a Msg to Root",
+        .hint = NULL,
+        .func = &cmdSendMesh,
+        .argtable = NULL
+    };
+
+    const esp_console_cmd_t loglevel_cmd = {
+        .command = "loglevel",
+        .help = "Set log level",
+        .hint = NULL,
+        .func = &cmdLogLevel,
+        .argtable = &loglevel
+    };
+
 
     ESP_ERROR_CHECK(esp_console_cmd_register(&fram_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&meter_cmd));
@@ -482,6 +604,8 @@ void kbd()
     ESP_ERROR_CHECK(esp_console_cmd_register(&send_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&controler_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&ota_cmd));
+    ESP_ERROR_CHECK(esp_console_cmd_register(&sendmesh_cmd));
+    ESP_ERROR_CHECK(esp_console_cmd_register(&loglevel_cmd));
 
 
    ESP_ERROR_CHECK(esp_console_start_repl(repl));
