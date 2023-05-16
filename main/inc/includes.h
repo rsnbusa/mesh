@@ -34,7 +34,6 @@ extern "C"{
 #include "esp_sntp.h"
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
-#include "app_wifi.h"
 #include "mqtt_client.h"
 #include <wifi_provisioning/manager.h>
 #include <wifi_provisioning/scheme_ble.h>

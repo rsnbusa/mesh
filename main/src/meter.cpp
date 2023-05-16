@@ -1124,7 +1124,7 @@ void post_root()
 int network()
 {
    // printf("Starting network\n");
-    app_wifi_init();
+    // app_wifi_init();
 
     wifi_prov_mgr_config_t config = {
     .scheme = wifi_prov_scheme_ble,
@@ -1145,16 +1145,16 @@ int network()
         wifi_prov_mgr_deinit();
         return 0;
     }
-    err = app_wifi_start(POP_TYPE_NONE,(char*)"PROV_METER",(char *)"csttpstt");
-    if (err != ESP_OK) {
-        //fail only(i guess) happens when had a SSID and not accesible,s o lets reprovision it
-        printf("Could not start Wifi. Reprovisioning!!!\n");
-        wifi_prov_mgr_reset_provisioning();
-        ESP_ERROR_CHECK(esp_wifi_restore());
-        nvs_flash_erase();
-        nvs_flash_init();
-        esp_restart();
-    }
+    // err = app_wifi_start(POP_TYPE_NONE,(char*)"PROV_METER",(char *)"csttpstt");
+    // if (err != ESP_OK) {
+    //     //fail only(i guess) happens when had a SSID and not accesible,s o lets reprovision it
+    //     printf("Could not start Wifi. Reprovisioning!!!\n");
+    //     wifi_prov_mgr_reset_provisioning();
+    //     ESP_ERROR_CHECK(esp_wifi_restore());
+    //     nvs_flash_erase();
+    //     nvs_flash_init();
+    //     esp_restart();
+    // }
     esp_restart();  // either way restart
     u8g2_ClearBuffer(&u8g2);
     ssdString(10,38,(char*)"Time",true);
@@ -1268,7 +1268,7 @@ void app_main(void)
         erase_config();
     }
 
-    esp_log_level_set("*",(esp_log_level_t)theConf.loglevel);
+   // esp_log_level_set("*",(esp_log_level_t)theConf.loglevel);
 
 	theConf.lastResetCode=esp_rom_get_reset_reason(0);
     theConf.bootcount++;
