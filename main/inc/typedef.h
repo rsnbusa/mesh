@@ -83,6 +83,9 @@ typedef struct config {
     uint16_t    mqttSlots,pubCycle;
     uint16_t    nodeConf;
     uint16_t    loglevel, configured;
+    char        mqttServer[100];
+    char        mqttUser[50];
+    char        mqttPass[50];
 } config_flash;
 
 #endif

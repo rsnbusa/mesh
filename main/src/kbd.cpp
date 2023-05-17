@@ -340,8 +340,20 @@ int cmdMeter(int argc, char **argv)
 
 int cmdConfig(int argc, char **argv)
 {
-  char buf[50],buf2[50];
-  time_t lastwrite;
+  char buf[50],buf2[50],fecha[60];
+  time_t lastwrite,now;
+
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        char *buff=(char*)malloc(300);
+        if(buff)
+        {
+            bzero(buff,300);
+            strftime(buff, 300, "%c", &timeinfo);
+            strcpy(fecha,buff);
+            //  printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buff,timeinfo.tm_yday);
+            free(buff);
+        }
 
   const esp_partition_t *running = esp_ota_get_running_partition();
 
@@ -362,7 +374,7 @@ int cmdConfig(int argc, char **argv)
   lafecha(lastwrite,buf2);
 
   uint8_t *my_mac = mesh_netif_get_station_mac();
-  printf("======= Mesh Configuration =======\n");
+  printf("======= Mesh Configuration Date: %s=======\n",fecha);
   printf("Firmware Version:%s Root:%s MAC:" MACSTR " SSID:%s LogLevel:%d\n", running_app_info.version,esp_mesh_is_root()?"Yes":"No",MAC2STR(my_mac),
   conf.sta.ssid,theConf.loglevel);
   if(esp_mesh_is_root())

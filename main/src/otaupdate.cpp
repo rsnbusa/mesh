@@ -3,14 +3,14 @@
 #include "globals.h"
 #include "includes.h"
 extern void ssdString(int x, int y, char * que,bool centerf);
-extern void mdelay(uint32_t cuanto);
+extern void delay(uint32_t cuanto);
 
 void task_fatal_error(void)
 {
 #ifdef DISPLAY
     u8g2_ClearBuffer(&u8g2);
     ssdString(10,38,(char*)"OTA FAIL",true);
-    mdelay(3000);
+    delay(3000);
     u8g2_ClearBuffer(&u8g2);
 	u8g2_SendBuffer(&u8g2);
 #endif
@@ -207,7 +207,7 @@ void ota_task(void *pvParameter)
 #ifdef DISPLAY
     u8g2_ClearBuffer(&u8g2);
     ssdString(10,38,(char*)"OTA OK",true);
-    mdelay(2000);
+    delay(2000);
 #endif
     esp_restart();
     return ;

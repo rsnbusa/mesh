@@ -5,33 +5,14 @@
 #define SSID "Porton"
 #define PSW "csttpstt"
 
-xQueueHandle pcnt_evt_queue;   // A queue to handle pulse counter events
+// xQueueHandle pcnt_evt_queue;   // A queue to handle pulse counter events
 
-/* A sample structure to pass events from the PCNT
- * interrupt handler to the main program.
- */
-static int s_retry_num = 0;
-static EventGroupHandle_t s_wifi_event_group;
-#define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT      BIT1
 void mqtt_sender(void *pArg);
 static void    mqtt_app_start();
 
-static const uint8_t MESH_ID[6] = { 0x77, 0x77, 0x77, 0x77, 0x77, 0x76};
-static bool is_running = true;
-static mesh_addr_t mesh_parent_addr;
-static int mesh_layer = -1;
-static esp_ip4_addr_t s_current_ip;
-// static mesh_addr_t s_route_table[CONFIG_MESH_ROUTE_TABLE_SIZE];
-// static int s_route_table_size = 0;
-static SemaphoreHandle_t s_route_table_lock = NULL;
-static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE*6+1];
-
-
-void mdelay(uint32_t cuanto)
+void delay(uint32_t cuanto)
 {
-            vTaskDelay(cuanto / portTICK_PERIOD_MS);
-
+    vTaskDelay(cuanto / portTICK_PERIOD_MS);
 }
 
 uint32_t xmillis()
@@ -43,8 +24,6 @@ uint32_t xmillisFromISR()
 {
 	return xTaskGetTickCountFromISR() * portTICK_PERIOD_MS;
 }
-
-
 
 void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
 {
@@ -74,7 +53,7 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
     // } else {
     //     ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unknown command");
     // }
-    printf("Msg in [%s] from " MACSTR "\n",(char *)data->data, MAC2STR(from->addr));
+    // printf("Msg in [%s] from " MACSTR "\n",(char *)data->data, MAC2STR(from->addr));
     char *mensaje=(char *)malloc(1000);
     if(!mensaje)
     {
@@ -84,7 +63,7 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
     strcpy(mensaje,(char *)data->data);
     mqttMsg.msg=mensaje;
     mqttMsg.lenMsg=strlen(mensaje);
-    printf("Sending mqtt mesh msg [%s]\n",mensaje);
+    // printf("Sending mqtt mesh msg [%s]\n",mensaje);
      if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)
         {
             printf("Error queueing msg\n");
@@ -176,25 +155,13 @@ static void event_handler_prov(void* arg, esp_event_base_t event_base,
                          "\n\tPlease reset to factory and retry provisioning",
                          (*reason == WIFI_PROV_STA_AUTH_ERROR) ?
                          "Wi-Fi station authentication failed" : "Wi-Fi access-point not found");
-#ifdef CONFIG_EXAMPLE_RESET_PROV_MGR_ON_FAILURE
-                retries++;
-                if (retries >= CONFIG_EXAMPLE_PROV_MGR_MAX_RETRY_CNT) {
-                    ESP_LOGI(MESH_TAG, "Failed to connect with provisioned AP, reseting provisioned credentials");
-                    wifi_prov_mgr_reset_sm_state_on_failure();
-                    retries = 0;
-                }
-#endif
                 break;
             }
             case WIFI_PROV_CRED_SUCCESS:
                 ESP_LOGI(MESH_TAG, "Provisioning successful");
-#ifdef CONFIG_EXAMPLE_RESET_PROV_MGR_ON_FAILURE
-                retries = 0;
-#endif
                 break;
             case WIFI_PROV_END:
-                            ESP_LOGI(MESH_TAG, "Provisioning Ended");
-
+                ESP_LOGI(MESH_TAG, "Provisioning Ended");
                 /* De-initialize manager once provisioning is finished */
                 wifi_prov_mgr_deinit();
                 break;
@@ -214,12 +181,6 @@ static void event_handler_prov(void* arg, esp_event_base_t event_base,
     }
 }
 
-static void wifi_init_sta(void)
-{
-    /* Start Wi-Fi in station mode */
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_start());
-}
 
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
@@ -245,7 +206,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-void sntpget()
+void sntpget(void *pArg)
 {
     time_t now;
     struct tm timeinfo;
@@ -269,7 +230,7 @@ void sntpget()
         if(retry>retry_count)
         {
             printf("SNTP failed\n");
-            return;
+            vTaskDelete(NULL);
         }
         time(&now);
         setenv("TZ", LOCALTIME, 1);
@@ -285,65 +246,7 @@ void sntpget()
             free(buf);
         }
         set_senddata_timer();
-
     }
-}
-
-
-void wifi_init_sta(void * pArg)
-{
-    s_wifi_event_group = xEventGroupCreate();
-
-    ESP_ERROR_CHECK(esp_netif_init());
-
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-    esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_t instance_got_ip;
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-                                                        ESP_EVENT_ANY_ID,
-                                                        &event_handler,
-                                                        NULL,
-                                                        &instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
-                                                        IP_EVENT_STA_GOT_IP,
-                                                        &event_handler,
-                                                        NULL,
-                                                        &instance_got_ip));
-
-    esp_wifi_set_ps (WIFI_PS_NONE);     
-    wifi_config_t wifi_config;
-    bzero((void*)&wifi_config,sizeof(wifi_config));
-    strcpy((char*)wifi_config.sta.ssid,SSID);
-    strcpy((char*)wifi_config.sta.password,PSW);
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
-    esp_wifi_set_ps (WIFI_PS_NONE);     
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
-    ESP_ERROR_CHECK(esp_wifi_start() );
-    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-            pdFALSE,
-            pdFALSE,
-            portMAX_DELAY);
-
-    if (bits & WIFI_CONNECTED_BIT) {
-       printf( "connected to ap SSID:%s password:%s\n",SSID, PSW);
-                 sntpget();
-    } else if (bits & WIFI_FAIL_BIT) {
-       printf( "Failed to connect to SSID:%s, password:%s\n",
-                 SSID, PSW);
-    } else {
-       printf( "UNEXPECTED EVENT");
-    }
-
-    /* The event will not be processed after unregister */
-    ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip));
-    ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id));
-    vEventGroupDelete(s_wifi_event_group);
     vTaskDelete(NULL);
 
 }
@@ -480,19 +383,11 @@ void mqttMgr(void *pArg)
     mqttMsg_t mqttHandle;
 	cJSON 	*elcmd;
 
-	// int err=esp_mqtt_client_start(clientCloud);
-    // if(err)
-    // {
-    //     printf("Could not start Mqtt %d %x\n",err,err);
-    // }
-
     while(true)
     {
         if( xQueueReceive( mqttQ, &mqttHandle, portMAX_DELAY ))	//mqttHandle has a pointer to the original message. MUST be freed at some point
         {
             printf("Message In MQtt %s len %d\n",mqttHandle.message,mqttHandle.msgLen);
-            // char *algo=(char*)malloc(1000);
-            // memcpy((void*)algo,(void*)mqttHandle.message,mqttHandle.msgLen);
             elcmd= cJSON_Parse((char*)mqttHandle.message);		//plain text to cJSON... must eventually cDelete elcmd
 			if(elcmd)
 			{
@@ -532,53 +427,53 @@ static void mqtt_app_start(void)
     esp_base_mac_addr_get((uint8_t*)mac);
     bzero(who,sizeof(who));
     sprintf(who,"Meterserver%d",theConf.controllerid);
-    printf("Who %s\n",who);
+    printf("MQTT NodeId %s\n",who);
 // extern const uint8_t hive_start[]   asm("_binary_hive_pem_start");
 // extern const uint8_t hive_end[]   asm("_binary_hive_pem_end");
 
 // int ssllen=hive_end-hive_start;
 
-        wifi_event_group = xEventGroupCreate();
+    wifi_event_group = xEventGroupCreate();
 
 
-        bzero((void*)&mqtt_cfg,sizeof(mqtt_cfg));
-        mqtt_cfg.client_id=				    who;
-        mqtt_cfg.username=					"wckwlvot";
-        mqtt_cfg.password=					"MxoMTQjeEIHE";
-        mqtt_cfg.uri = 					    "mqtt://m13.cloudmqtt.com:18747";
-        // mqtt_cfg.username=					    "user1";
-        // mqtt_cfg.password=					    "Csttpstt1";
-        // mqtt_cfg.uri = 					        "ssl://8cb3b896a9ff4973ab94b219d8ef1de8.s2.eu.hivemq.cloud:8883";
-        mqtt_cfg.event_handle = 			    mqtt_event_handler;
-	    mqtt_cfg.disable_auto_reconnect=	true;
-        // mqtt_cfg.cert_pem=NULL;
-        // mqtt_cfg.cert_pem=(char*)hive_start;
-        // mqtt_cfg.cert_len=ssllen;
+    bzero((void*)&mqtt_cfg,sizeof(mqtt_cfg));
+    mqtt_cfg.client_id=				    who;
+    mqtt_cfg.username=					"wckwlvot";
+    mqtt_cfg.password=					"MxoMTQjeEIHE";
+    mqtt_cfg.uri = 					    "mqtt://m13.cloudmqtt.com:18747";
+    // mqtt_cfg.username=					    "user1";
+    // mqtt_cfg.password=					    "Csttpstt1";
+    // mqtt_cfg.uri = 					        "ssl://8cb3b896a9ff4973ab94b219d8ef1de8.s2.eu.hivemq.cloud:8883";
+    mqtt_cfg.event_handle = 			    mqtt_event_handler;
+    mqtt_cfg.disable_auto_reconnect=	true;
+    // mqtt_cfg.cert_pem=NULL;
+    // mqtt_cfg.cert_pem=(char*)hive_start;
+    // mqtt_cfg.cert_len=ssllen;
 
-		mqttQ = xQueueCreate( 20, sizeof( mqttMsg_t ) );
-		if(!mqttQ)
-			printf("Failed queue Cmd\n");
-		mqttSender = xQueueCreate( 20, sizeof( mqttSender_t ) );
-		if(!mqttSender)
-			printf("Failed queue Sender\n");
-        else
-            printf("Mqttsender created\n"); 
+    mqttQ = xQueueCreate( 20, sizeof( mqttMsg_t ) );
+    if(!mqttQ)
+        printf("Failed queue Cmd\n");
+    mqttSender = xQueueCreate( 20, sizeof( mqttSender_t ) );
+    if(!mqttSender)
+        printf("Failed queue Sender\n");
+    else
+        printf("Mqttsender created\n"); 
 
-		clientCloud=NULL;
+    clientCloud=NULL;
 
-	    clientCloud = esp_mqtt_client_init(&mqtt_cfg);
+    clientCloud = esp_mqtt_client_init(&mqtt_cfg);
 
-	    if(clientCloud)
-        {
-             printf("Mqtt started\n");
-	    	xTaskCreate(&mqttMgr,"mqtt",10240,NULL, 5, NULL);
-	    	xTaskCreate(&mqtt_sender,"mqttsend",10240,NULL, 5, NULL);
-        }
-	    else
-	    {
-	    	printf("Not configured Mqtt\n");	//should crash. No conn with Host defeats the purpose but lets save beats at least
-	    	return;
-	    }
+    if(clientCloud)
+    {
+        printf("Mqtt started\n");
+        xTaskCreate(&mqttMgr,"mqtt",10240,NULL, 5, NULL);
+        xTaskCreate(&mqtt_sender,"mqttsend",10240,NULL, 5, NULL);
+    }
+    else
+    {
+        printf("Not configured Mqtt\n");	//should crash. No conn with Host defeats the purpose but lets save beats at least
+        return;
+    }
 }
 
 void esp_mesh_p2p_rx_main(void *arg)
@@ -607,9 +502,9 @@ void esp_mesh_p2p_rx_main(void *arg)
         memcpy(&aca,data.data,4);
         if (aca!=0xffffffff)
         {
-            esp_log_buffer_hex("NADA",data.data,data.size);
-            printf(
-                        "%s [L:%d] parent:"MACSTR", receive from "MACSTR", size:%d, heap:%d, flag:%d[err:0x%x, proto:%d, tos:%d]\n",data.data,
+            // esp_log_buffer_hex("NADA",data.data,data.size);
+            ESP_LOGI(MESH_TAG,
+                        "%s [L:%d] parent:"MACSTR", receive from "MACSTR", size:%d, heap:%d, flag:%d[err:0x%x, proto:%d, tos:%d]",data.data,
                         mesh_layer, MAC2STR(mesh_parent_addr.addr), MAC2STR(from.addr),
                         data.size, esp_get_minimum_free_heap_size(), flag, err, data.proto,
                         data.tos);
@@ -823,6 +718,12 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
 
 void init_vars()
 {
+    // mesh stuff 
+    mesh_layer = -1;
+    // mesh id as we cannot use static variable configuration
+    memset(MESH_ID,0x77,6);
+    MESH_ID[5]=0x76;
+
 //cmd and info queue names
     sprintf(cmdQueue,"meter/%d/%d/%d/%d/%d/cmd",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
     sprintf(infoQueue,"meter/%d/%d/%d/%d/%d/info",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
@@ -973,33 +874,6 @@ void erase_config()
     write_to_flash();
 }
 
-void testMqtt(void * pArg)
-{
-
-    printf("Start test\n");
-    uint32_t starttest=xmillis();
-	int err=esp_mqtt_client_start(clientCloud);
-    if(err)
-    {
-        printf("Could not start Mqtt %d %x\n",err,err);
-        // vTaskDelete(NULL);
-    }
-   // printf("Waiting connect\n");
-    xEventGroupWaitBits(wifi_event_group, MQTT_BIT, false, true,  portMAX_DELAY/ portTICK_RATE_MS);
-
-    xEventGroupClearBits(wifi_event_group, MQTT_BIT);	// clear bit to wait on
-    // printf("Sending mqtt %s\n",infoQueue);
-    esp_mqtt_client_publish(clientCloud, infoQueue, (char*)pArg,strlen((char*)pArg), 1,0);
-
-    xEventGroupWaitBits(wifi_event_group, MQTT_BIT, false, true,  portMAX_DELAY/ portTICK_RATE_MS);
-    uint32_t endtest=xmillis();
-    printf("Mqtt test ended duration %d\n",endtest-starttest);
-    err=esp_mqtt_client_stop(clientCloud);
-    if(pArg)
-        free(pArg);
-    // vTaskDelete(NULL);
-}
-
 void mqtt_sender(void *pArg)        // MQTTT data sender task
 {
     mqttSender_t mensaje;
@@ -1022,7 +896,7 @@ void mqtt_sender(void *pArg)        // MQTTT data sender task
 
         // CRITICAL READ. Tema Latencia de RX o TX de WiFi
         // Delay required so that the MQTT Task is able to perform internal functions and receive data
-        //mdelay(100); // NEEDs this time to "think" I guess or work on getting messages etc. 1000 seen as minimum but whne changing AMPDU in Menuconfig 
+        //delay(100); // NEEDs this time to "think" I guess or work on getting messages etc. 1000 seen as minimum but whne changing AMPDU in Menuconfig 
         // to DISABLED it works WITHOUT delays
 
         while(true)
@@ -1157,7 +1031,7 @@ void post_root()
 {
     u8g2_ClearBuffer(&u8g2);
     ssdString(10,38,(char*)"Time",true);
-    sntpget();
+    xTaskCreate(&sntpget,"sntp",10240,NULL, 10, NULL); 	        // show booting sequence active
     u8g2_ClearBuffer(&u8g2);
     ssdString(10,38,(char*)"MQTT",true);
 
@@ -1188,78 +1062,6 @@ void post_root()
         printf("Down time in seconds %d\n",(uint32_t)now-lastfecha);
         theConf.downtime+=(uint32_t)now-lastfecha;
     }
-}
-
-int network()
-{
-   // printf("Starting network\n");
-    // app_wifi_init();
-
-    wifi_prov_mgr_config_t config = {
-    .scheme = wifi_prov_scheme_ble,
-    .scheme_event_handler = WIFI_PROV_SCHEME_BLE_EVENT_HANDLER_FREE_BTDM
-};
-
-    ESP_ERROR_CHECK(wifi_prov_mgr_init(config));
-
-    bool provisioned = false;
-    /* Let's find out if the device is provisioned */
-  esp_err_t err=wifi_prov_mgr_is_provisioned(&provisioned);
-
-
-    u8g2_ClearBuffer(&u8g2);
-    ssdString(10,38,provisioned?(char*)"WiFI":(char*)"PROV",true);
-    if(provisioned)
-    {
-        wifi_prov_mgr_deinit();
-        return 0;
-    }
-    // err = app_wifi_start(POP_TYPE_NONE,(char*)"PROV_METER",(char *)"csttpstt");
-    // if (err != ESP_OK) {
-    //     //fail only(i guess) happens when had a SSID and not accesible,s o lets reprovision it
-    //     printf("Could not start Wifi. Reprovisioning!!!\n");
-    //     wifi_prov_mgr_reset_provisioning();
-    //     ESP_ERROR_CHECK(esp_wifi_restore());
-    //     nvs_flash_erase();
-    //     nvs_flash_init();
-    //     esp_restart();
-    // }
-    esp_restart();  // either way restart
-    u8g2_ClearBuffer(&u8g2);
-    ssdString(10,38,(char*)"Time",true);
-    sntpget();
-    u8g2_ClearBuffer(&u8g2);
-    ssdString(10,38,(char*)"MQTT",true);
-
-    mqtt_app_start();
-    // xTaskCreate(&testMqtt,"mqtt",10240,fecha, 5, NULL);
-    firstTimer=xTimerCreate("Timer",pdMS_TO_TICKS(2000),pdFALSE,( void * ) 0, firstCallback);
-    if( xTimerStart(firstTimer, 0 ) != pdPASS )
-    {
-        printf("First Timer failed\n");
-    }
-    u8g2_ClearBuffer(&u8g2);
-    u8g2_SendBuffer(&u8g2);
-    
-    if (!theConf.nodeConf)
-    {
-        char tmp[12];
-        sprintf(tmp,"%d",theConf.controllerid);
-        printf("Node %s\n",tmp);
-        u8g2_ClearBuffer(&u8g2);
-        ssdString(10,38,tmp,true);
-    }
-//check down time and add it to the config structure
-    uint32_t lastfecha;
-    fram.read_guard((uint8_t*)&lastfecha);
-    if(lastfecha>0)
-    {
-        time_t now;
-        time(&now);
-        printf("Down time in seconds %d\n",(uint32_t)now-lastfecha);
-        theConf.downtime+=(uint32_t)now-lastfecha;
-    }
-    return 1;
 }
 
 void ip_event_handler(void *arg, esp_event_base_t event_base,
@@ -1279,23 +1081,6 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
     mqtt_app_start();
     post_root();
  }
-}
-
-esp_err_t custom_prov_data_handler(uint32_t session_id, const uint8_t *inbuf, ssize_t inlen,
-                                          uint8_t **outbuf, ssize_t *outlen, void *priv_data)
-{
-    if (inbuf) {
-        ESP_LOGI(MESH_TAG, "Received data: %.*s", inlen, (char *)inbuf);
-    }
-    char response[] = "SUCCESS";
-    *outbuf = (uint8_t *)strdup(response);
-    if (*outbuf == NULL) {
-        ESP_LOGE(MESH_TAG, "System out of memory");
-        return ESP_ERR_NO_MEM;
-    }
-    *outlen = strlen(response) + 1; /* +1 for NULL terminating byte */
-
-    return ESP_OK;
 }
 
 static void get_device_service_name(char *service_name, size_t max)
@@ -1361,7 +1146,7 @@ esp_err_t new_provision()
          *      - this should be a string with length > 0
          *      - NULL if not used
          */
-        const char *pop = "abcd1234";
+        const char *pop = "csttpstt";
 
         /* What is the service key (could be NULL)
          * This translates to :
@@ -1399,7 +1184,6 @@ esp_err_t new_provision()
          * The endpoint name can be anything of your choice.
          * This call must be made before starting the provisioning.
          */
-        wifi_prov_mgr_endpoint_create("custom-data");
         /* Start provisioning service */
         ESP_ERROR_CHECK(wifi_prov_mgr_start_provisioning(security, pop, service_name, service_key));
 
@@ -1407,7 +1191,6 @@ esp_err_t new_provision()
          * This call must be made after starting the provisioning, and only if the endpoint
          * has already been created above.
          */
-       wifi_prov_mgr_endpoint_register("custom-data", custom_prov_data_handler, NULL);
 
         /* Uncomment the following to wait for the provisioning to finish and then release
          * the resources of the manager. Since in this case de-initialization is triggered
@@ -1416,26 +1199,26 @@ esp_err_t new_provision()
         // wifi_prov_mgr_deinit();
         /* Print QR code for provisioning */
 
-        printf("Done Prov...waiting\n");
-        // mdelay(1000);
+        // printf("Done Prov...waiting\n");
+        // delay(1000);
         // esp_restart();
 
     } 
     else
     {
-        printf("Ya esta\n");
+        // printf("Ya esta\n");
         wifi_prov_mgr_deinit();
         /* Start Wi-Fi station */
-        // wifi_init_sta();
+        // wifi_init_sta();         // not when using Mesh that does this 
         ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, &event_handler_prov));
         ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler_prov));
         ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler_prov));
         return ESP_OK;
     }
    
-    printf("Waiting event...\n");
+    // printf("Waiting event...\n");
     xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_EVENT, false, true, portMAX_DELAY);
-    printf("Event done\n");
+    // printf("Event done\n");
 
     ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, &event_handler_prov));
     ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler_prov));
@@ -1448,10 +1231,6 @@ esp_err_t new_provision()
 
 void app_main(void)
 {
-    // mdelay(3000);
-    // MESH_TAG=(char*)malloc(10);
-    // strcpy(MESH_TAG,"Mesh");
-
     // OTA reboot section 
 
     const esp_partition_t *running = esp_ota_get_running_partition();
@@ -1502,7 +1281,7 @@ void app_main(void)
         erase_config();
     }
 
-   // esp_log_level_set("*",(esp_log_level_t)theConf.loglevel);
+    esp_log_level_set("*",(esp_log_level_t)theConf.loglevel);
 
 	theConf.lastResetCode=esp_rom_get_reset_reason(0);
     theConf.bootcount++;
@@ -1535,19 +1314,12 @@ void app_main(void)
     new_provision();
 
     esp_event_loop_delete_default();
-    // // ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL));
-    // ESP_ERROR_CHECK(esp_event_loop_create_default());
-
+    // // ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL))
     ESP_ERROR_CHECK(esp_wifi_deinit());
-    // wifi_init_config_t cfgg = WIFI_INIT_CONFIG_DEFAULT();
-    // ESP_ERROR_CHECK(esp_wifi_init(&cfgg));
     esp_netif_destroy_default_wifi(esp_sta);
     esp_netif_dhcpc_stop(esp_sta);
 
-    // esp_netif_dhcpc_stop(WIFI_IF_AP);
-    // while(true)
-    //     mdelay(1000);
-ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL));
+    ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL));
 
     /*  crete network interfaces for mesh (only station instance saved for further manipulation, soft AP instance ignored */
     ESP_ERROR_CHECK(mesh_netifs_init(mesh_recv_cb));
@@ -1562,21 +1334,21 @@ ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL));
 // router name and password from wifi configuration
 wifi_config_t config;
 esp_wifi_get_config( WIFI_IF_STA,&config);
-printf("SSID %s password %s\n",config.ap.ssid,config.ap.password);
+// printf("SSID %s password %s\n",config.ap.ssid,config.ap.password);
 
 char missid[30],mipassw[10];
 
-// if(strlen((char*)config.ap.ssid)==0)
-// {
- strcpy(missid,"Porton");
+if(strlen((char*)config.ap.ssid)==0)
+{
+ strcpy(missid,"Patos");
  strcpy(mipassw,"csttpstt");
 
-// }
-// else
-// {
-//     strcpy(missid,(char*)config.ap.ssid);
-//     strcpy(mipassw,(char*)config.ap.password);
-// }
+}
+else
+{
+    strcpy(missid,(char*)config.ap.ssid);
+    strcpy(mipassw,(char*)config.ap.password);
+}
 
         /*  mesh initialization */
     ESP_ERROR_CHECK(esp_mesh_init());

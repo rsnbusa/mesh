@@ -4,7 +4,7 @@
 void set_senddata_timer();
 void kbd();
 void displayManager(void *pArg);
-void mdelay(uint32_t a);
+void delay(uint32_t a);
 uint32_t xmillis(void);
 int cmdRestore(void *argument);
 int cmdFormat(void *argument);

@@ -178,7 +178,7 @@ void displayManager(void *arg)
 		{
 			startt=xmillis();
 			while(!gpio_get_level((gpio_num_t)0))
-				mdelay(100);
+				delay(100);
 			fueron=xmillis()-startt;
 			if(fueron>3000)
 			{

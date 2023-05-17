@@ -21,3 +21,5 @@
 #define OTAURL                          "http://161.35.115.228/metermgr.bin"
 #define OTADEL                          5000
 #define MESH_TAG                        "Mesh"
+#define WIFI_CONNECTED_BIT              BIT0
+#define WIFI_FAIL_BIT                   BIT1
