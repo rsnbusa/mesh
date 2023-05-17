@@ -1446,32 +1446,6 @@ esp_err_t new_provision()
 
 }
 
-
-bool check_prov()
-{
-    /* Initialize the event loop */
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-     wifi_prov_mgr_config_t config = 
-     {
-        .scheme = wifi_prov_scheme_ble,
-        .scheme_event_handler = WIFI_PROV_SCHEME_BLE_EVENT_HANDLER_FREE_BTDM
-    };
-
-    ESP_ERROR_CHECK(wifi_prov_mgr_init(config));
-
-    bool provisioned = false;
-    /* Let's find out if the device is provisioned */
-  esp_err_t err=wifi_prov_mgr_is_provisioned(&provisioned);
-
-        wifi_prov_mgr_deinit();
-        printf("It is provisioned: %s\n",provisioned?"Y":"N");
-        esp_wifi_deinit();
-        return provisioned;
-}
-
 void app_main(void)
 {
     // mdelay(3000);
