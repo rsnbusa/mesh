@@ -1562,24 +1562,24 @@ void app_main(void)
 
     esp_event_loop_delete_default();
     // // ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL));
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    // ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    // ESP_ERROR_CHECK(esp_wifi_deinit());
+    ESP_ERROR_CHECK(esp_wifi_deinit());
     // wifi_init_config_t cfgg = WIFI_INIT_CONFIG_DEFAULT();
     // ESP_ERROR_CHECK(esp_wifi_init(&cfgg));
     esp_netif_destroy_default_wifi(esp_sta);
-    // esp_netif_dhcpc_stop(esp_sta);
+    esp_netif_dhcpc_stop(esp_sta);
 
     // esp_netif_dhcpc_stop(WIFI_IF_AP);
     // while(true)
     //     mdelay(1000);
-
+ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL));
 
     /*  crete network interfaces for mesh (only station instance saved for further manipulation, soft AP instance ignored */
     ESP_ERROR_CHECK(mesh_netifs_init(mesh_recv_cb));
     
-    // wifi_init_config_t configg = WIFI_INIT_CONFIG_DEFAULT();
-    // ESP_ERROR_CHECK(esp_wifi_init(&configg));
+    wifi_init_config_t configg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&configg));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_handler, NULL));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_FLASH));
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
