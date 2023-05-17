@@ -20,3 +20,4 @@
 
 #define OTAURL                          "http://161.35.115.228/metermgr.bin"
 #define OTADEL                          5000
+#define MESH_TAG                        "Mesh"

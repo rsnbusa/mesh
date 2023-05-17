@@ -42,8 +42,9 @@ EXTERN u8g2_t                       u8g2; // a structure which will contain all 
 #endif
 EXTERN EventGroupHandle_t 			wifi_event_group;
 EXTERN TimerHandle_t                firstTimer,repeatTimer;
-EXTERN char*                        MESH_TAG;
+// EXTERN char*                        MESH_TAG;
 EXTERN mesh_addr_t                  s_route_table[CONFIG_MESH_ROUTE_TABLE_SIZE];
 EXTERN int                          s_route_table_size;
 EXTERN loglevel_t                   loglevel;
+EXTERN esp_netif_t*                 esp_sta;            
 #endif
