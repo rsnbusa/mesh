@@ -17,7 +17,8 @@ void delay(uint32_t cuanto)
 
 uint32_t xmillis()
 {
-	return xTaskGetTickCount() * portTICK_PERIOD_MS;
+    return esp_timer_get_time()/1000;
+	// return xTaskGetTickCount() * portTICK_PERIOD_MS;
 }
 
 uint32_t xmillisFromISR()
@@ -718,6 +719,8 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
 
 void init_vars()
 {
+    gpio_config_t 	        io_conf;
+
     // mesh stuff 
     mesh_layer = -1;
     // mesh id as we cannot use static variable configuration
@@ -775,6 +778,12 @@ void init_vars()
 	strcpy((char*)&cmds[++x].comando,       "update");		            cmds[x].code=cmdUpdate;			strcpy((char*)&cmds[x].abr,         "UPDT");		
 	strcpy((char*)&cmds[++x].comando,       "erase");		            cmds[x].code=cmdErase;			strcpy((char*)&cmds[x].abr,         "ERSE");		
 	strcpy((char*)&cmds[++x].comando,       "ota");		                cmds[x].code=cmdOTA;			strcpy((char*)&cmds[x].abr,         "OTA");		
+
+	io_conf.mode = GPIO_MODE_INPUT;
+	io_conf.pull_up_en =GPIO_PULLUP_ENABLE;
+	io_conf.pull_down_en =GPIO_PULLDOWN_DISABLE;
+	io_conf.pin_bit_mask = (1ULL<<0);     //input pins
+	gpio_config(&io_conf);
 }
 
 // {"cmd":"initmeter","unit":0,"mid":"1111111111","kwh":1111,"bpk":800}
@@ -871,6 +880,7 @@ void erase_config()
     time((time_t*)&theConf.bornDate);
     theConf.mqttSlots=125;
     theConf.pubCycle=6;
+    theConf.loglevel=3;
     write_to_flash();
 }
 
@@ -1062,6 +1072,8 @@ void post_root()
         printf("Down time in seconds %d\n",(uint32_t)now-lastfecha);
         theConf.downtime+=(uint32_t)now-lastfecha;
     }
+        //  xTaskCreate(&start_webserver,"web",10240,NULL, 10, NULL); 	        // show booting sequence active
+
 }
 
 void ip_event_handler(void *arg, esp_event_base_t event_base,
@@ -1229,6 +1241,73 @@ esp_err_t new_provision()
 
 }
 
+void park_state()
+{
+    uint32_t startm,elapsed;
+    //check for flash button and time elapsed
+    #ifdef DISPLAY
+    u8g2_ClearBuffer(&u8g2);
+    ssdString(10,38,(char*)"Mesh",true);
+#endif
+printf("Mesh\n");
+    while(true)
+    {
+        delay(500);
+        if(!gpio_get_level((gpio_num_t)0))
+        {
+                printf("start btn\n");
+                //start counting millis >2000 x < 2500 is Non Root Mesh else >2500 provision
+                startm=xmillis();
+                while(!gpio_get_level((gpio_num_t)0))    // released
+                    delay(100);
+            
+                //button released
+                elapsed=xmillis()-startm;
+                printf("Elapsed %d\n",elapsed);
+            
+            if(elapsed>2000)
+            {
+                if(elapsed>4000)
+                {
+                    printf("New Provision\n");
+                    #ifdef DISPLAY
+                    u8g2_ClearBuffer(&u8g2);
+                    ssdString(10,38,(char*)"PROV",true);
+                    #endif
+                    //provision chosen
+                    ESP_ERROR_CHECK(esp_netif_init());
+                    ESP_ERROR_CHECK(esp_event_loop_create_default());
+                    wifi_event_group = xEventGroupCreate();
+                    new_provision();
+                    theConf.meshconf=1;
+                    write_to_flash();
+
+                    esp_restart();
+                }
+                else
+                {
+                    #ifdef DISPLAY
+                    u8g2_ClearBuffer(&u8g2);
+                    ssdString(10,38,(char*)"NROOT",true);
+                    #endif
+                    printf("Non Root\n");
+                    //non root chosen
+                    theConf.meshconf=2;
+                    write_to_flash();
+                    delay(5000);
+                    esp_restart();
+                }
+            }
+        }
+    }
+}
+
+void meter_configure()
+{
+    printf("Configure Meters\n");
+
+}
+
 void app_main(void)
 {
     // OTA reboot section 
@@ -1305,18 +1384,32 @@ void app_main(void)
    kbd();      //start console
 #endif
 
+//check mesh config
+    if(!theConf.meshconf)
+        park_state();
+    
+    if(!theConf.meterconf || theConf.bootflag)
+        meter_configure;
+
    xTaskCreate(&displayManager,"displ",10240,NULL, 10, NULL); 	        // show booting sequence active
     
     ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
     wifi_event_group = xEventGroupCreate();
 
-    new_provision();
+    if(theConf.meshconf==2)
+        esp_mesh_fix_root(true);        //force him to seek a root node.
 
-    esp_event_loop_delete_default();
-    // // ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL))
-    ESP_ERROR_CHECK(esp_wifi_deinit());
-    esp_netif_destroy_default_wifi(esp_sta);
+    if(theConf.meshconf<2)
+    {
+        printf("trying newconfigure\n");
+        ESP_ERROR_CHECK(esp_event_loop_create_default());
+        new_provision();
+
+        esp_event_loop_delete_default();
+        // // ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL))
+        ESP_ERROR_CHECK(esp_wifi_deinit());
+        esp_netif_destroy_default_wifi(esp_sta);
+    }
     esp_netif_dhcpc_stop(esp_sta);
 
     ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL));
@@ -1355,6 +1448,7 @@ else
     ESP_ERROR_CHECK(esp_event_handler_register(MESH_EVENT, ESP_EVENT_ANY_ID, &mesh_event_handler, NULL));
     ESP_ERROR_CHECK(esp_mesh_set_max_layer(CONFIG_MESH_MAX_LAYER));
     ESP_ERROR_CHECK(esp_mesh_set_vote_percentage(1));
+
     ESP_ERROR_CHECK(esp_mesh_set_ap_assoc_expire(10));
     mesh_cfg_t cfg = MESH_INIT_CONFIG_DEFAULT();
     /* mesh ID */

@@ -51,6 +51,10 @@ extern "C"{
 #include "lwip/lwip_napt.h"
 #include "mesh_netif.h"
 
+#include "esp_http_client.h"
+#include "esp_http_server.h"
+#include "esp_https_server.h"
+
 void app_main();
 }
 

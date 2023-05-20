@@ -1,6 +1,8 @@
 #ifndef TYPES_H_
 #include "includes.h"
 
+typedef enum webStates{wNONE,wLOGIN,wMENU,wSETUP,wCHALL} wstate_t;
+
 typedef struct fram{
     struct arg_str *format;         //format WHOLE fram
     struct arg_str *guard;          // write FRAM guard centinel
@@ -83,6 +85,8 @@ typedef struct config {
     uint16_t    mqttSlots,pubCycle;
     uint16_t    nodeConf;
     uint16_t    loglevel, configured;
+    uint16_t    meshconf,meterconf,bootflag;
+    uint32_t    meshconfdate,meterconfdate;
     char        mqttServer[100];
     char        mqttUser[50];
     char        mqttPass[50];

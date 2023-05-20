@@ -23,3 +23,5 @@
 #define MESH_TAG                        "Mesh"
 #define WIFI_CONNECTED_BIT              BIT0
 #define WIFI_FAIL_BIT                   BIT1
+
+#define FREEANDNULL(x)		            if(x) {free(x);x=NULL;}

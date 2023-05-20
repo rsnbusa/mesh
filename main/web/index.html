@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>CBox</title>
+    <style>
+        body {
+            background-color: rgb(108, 109, 105);
+            text-align: center;
+            color: white;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+    <div style="text-align:center">
+        <h1>Meter Building Conf</h1>
+        <h2 style="color:rgb(42, 192, 147)">NodeId:%s</h2>
+        <form method="get">
+
+        <label for="passw" style="color:rgb(192, 140, 42)">Password</label>
+        <input name="passw" type="password" style="margin-top:10px"></input><br>
+        <!-- <h2 style="color:lightcoral">Ingrese Parametros</h2> -->
+        <br>
+
+        <label for="m1" style="color:rgb(192, 140, 42)">MeterId</label>
+        <input name="m1" type="text" style="text-align:center;width: 200px;" id="m1" value="%s"></input>
+        <label for="bpk1" style="color:rgb(192, 140, 42)">BPK</label>
+        <input name="b1" type="text" style="text-align:center;width: 40px;" id="b1" value="%d" ></input>
+        <label for="start1" style="color:rgb(192, 140, 42)">Start</label>
+        <input name="s1" type="text" style="text-align:center;width: 60px;" id="s1" value="%d"></input>
+        <br>
+        
+        <label for="m2" style="color:rgb(192, 140, 42)">MeterId</label>
+        <input name="m2" type="text" style="text-align:center;width: 200px;" id="m2" value="%s"></input>
+        <label for="bpk2" style="color:rgb(192, 140, 42)">BPK</label>
+        <input name="b2" type="text" style="text-align:center;width: 40px;" id="b2" value="%d" ></input>
+        <label for="start2" style="color:rgb(192, 140, 42)">Start</label>
+        <input name="s2" type="text" style="text-align:center;width: 60px;" id="s2" value="%d"></input>
+        <br>
+        
+        <label for="m3" style="color:rgb(192, 140, 42)">MeterId</label>
+        <input name="m3" type="text" style="text-align:center;width: 200px;" id="m3" value="%s"></input>
+        <label for="bpk3" style="color:rgb(192, 140, 42)">BPK</label>
+        <input name="b3" type="text" style="text-align:center;width: 40px;" id="b3" value="%d" ></input>
+        <label for="start3" style="color:rgb(192, 140, 42)">Start</label>
+        <input name="s3" type="text" style="text-align:center;width: 60px;" id="s3" value="%d"></input>
+        <br>
+        
+        <label for="m4" style="color:rgb(192, 140, 42)">MeterId</label>
+        <input name="m4" type="text" style="text-align:center;width: 200px;" id="m4" value="%s"></input>
+        <label for="bpk4" style="color:rgb(192, 140, 42)">BPK</label>
+        <input name="b4" type="text" style="text-align:center;width: 40px;" id="b4" value="%d" ></input>
+        <label for="start4" style="color:rgb(192, 140, 42)">Start</label>
+        <input name="s4" type="text" style="text-align:center;width: 60px;" id="s4" value="%d"></input>
+        <br>
+        
+        <label for="m5" style="color:rgb(192, 140, 42)">MeterId</label>
+        <input name="m5" type="text" style="text-align:center;width: 200px;" id="m5" value="%s"></input>
+        <label for="bpk5" style="color:rgb(192, 140, 42)">BPK</label>
+        <input name="b5" type="text" style="text-align:center;width: 40px;" id="b5" value="%d" ></input>
+        <label for="start5" style="color:rgb(192, 140, 42)">Start</label>
+        <input name="s5" type="text" style="text-align:center;width: 60px;" id="s5" value="%d"></input>
+        <br>
+        
+        <label for="m6" style="color:rgb(192, 140, 42)">MeterId</label>
+        <input name="m6" type="text" style="text-align:center;width: 200px;" id="m6" value="%s"></input>
+        <label for="bpk6" style="color:rgb(192, 140, 42)">BPK</label>
+        <input name="b6" type="text" style="text-align:center;width: 40px;" id="b6" value="%d" ></input>
+        <label for="start6" style="color:rgb(192, 140, 42)">Start</label>
+        <input name="s6" type="text" style="text-align:center;width: 60px;" id="s6" value="%d"></input>
+        <br>
+        
+        <label for="m7" style="color:rgb(192, 140, 42)">MeterId</label>
+        <input name="m7" type="text" style="text-align:center;width: 200px;" id="m7" value="%s"></input>
+        <label for="bpk7" style="color:rgb(192, 140, 42)">BPK</label>
+        <input name="b7" type="text" style="text-align:center;width: 40px;" id="b7" value="%d" ></input>
+        <label for="start7" style="color:rgb(192, 140, 42)">Start</label>
+        <input name="s7" type="text" style="text-align:center;width: 60px;" id="s7" value="%d"></input>
+        <br>
+        
+        <label for="m8" style="color:rgb(192, 140, 42)">MeterId</label>
+        <input name="m8" type="text" style="text-align:center;width: 200px;" id="m8" value="%s"></input>
+        <label for="bpk8" style="color:rgb(192, 140, 42)">BPK</label>
+        <input name="b8" type="text" style="text-align:center;width: 40px;" id="b8" value="%d" ></input>
+        <label for="start8" style="color:rgb(192, 140, 42)">Start</label>
+        <input name="s8" type="text" style="text-align:center;width: 60px;" id="s8" value="%d"></input>
+        <br>
+         
+       <br>
+         <input id="button1"  class="button" type="submit" value="Guardar" formaction="/configure" style="color:white;margin-top:5px;height:40px;background-color:blue">
+            </form>
+        </div>
+</body>
+
+</html>

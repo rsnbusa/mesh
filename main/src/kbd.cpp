@@ -340,20 +340,25 @@ int cmdMeter(int argc, char **argv)
 
 int cmdConfig(int argc, char **argv)
 {
-  char buf[50],buf2[50],fecha[60];
+  char buf[50],buf2[50],fecha[60],myssid[20];
   time_t lastwrite,now;
 
-        time(&now);
-        localtime_r(&now, &timeinfo);
-        char *buff=(char*)malloc(300);
-        if(buff)
-        {
-            bzero(buff,300);
-            strftime(buff, 300, "%c", &timeinfo);
-            strcpy(fecha,buff);
-            //  printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buff,timeinfo.tm_yday);
-            free(buff);
-        }
+  if(!theConf.meshconf)
+  {
+    printf("Mesh not configured or started\n");
+    return ESP_OK;
+  }
+  time(&now);
+  localtime_r(&now, &timeinfo);
+  char *buff=(char*)malloc(300);
+  if(buff)
+  {
+      bzero(buff,300);
+      strftime(buff, 300, "%c", &timeinfo);
+      strcpy(fecha,buff);
+      //  printf("[CMD]The current date/time in %s is: %s day of Year %d\n", LOCALTIME,buff,timeinfo.tm_yday);
+      free(buff);
+  }
 
   const esp_partition_t *running = esp_ota_get_running_partition();
 
@@ -362,11 +367,13 @@ int cmdConfig(int argc, char **argv)
       printf( "Error getting partition versionn");
   }
 
+  bzero(myssid,sizeof(myssid));
   wifi_config_t conf;
   if(esp_wifi_get_config(WIFI_IF_STA, &conf)!=ESP_OK)
   {
     printf("Error readinmg wifi config\n");
-    return 0;
+    strcpy(myssid,(char*)conf.sta.ssid);
+  //  return 0;
   }
 
   lafecha(theConf.bornDate,buf);
@@ -376,7 +383,8 @@ int cmdConfig(int argc, char **argv)
   uint8_t *my_mac = mesh_netif_get_station_mac();
   printf("======= Mesh Configuration Date: %s=======\n",fecha);
   printf("Firmware Version:%s Root:%s MAC:" MACSTR " SSID:%s LogLevel:%d\n", running_app_info.version,esp_mesh_is_root()?"Yes":"No",MAC2STR(my_mac),
-  conf.sta.ssid,theConf.loglevel);
+  myssid,theConf.loglevel);
+  printf("Mesh config:%s Meter config:%s\n",theConf.meshconf?theConf.meshconf>1?"NonRoot":"Provision":"Not Conf",theConf.meterconf?"Yes":"NO");
   if(esp_mesh_is_root())
   {
     printf("Id : %d  Address: %s Created %s Slot %d  Cycle %d\n",theConf.controllerid,theConf.direccion,buf,theConf.mqttSlots,theConf.pubCycle);

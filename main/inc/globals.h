@@ -21,7 +21,8 @@ EXTERN pcnt_config_t                pcnt_config[8];
 EXTERN uint8_t                      ssignal[8],dia,mes,displayMode,suma[MAXDEVSS],s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE*6+1],MESH_ID[6];
 EXTERN int16_t                      theGuard,lastFont,lastalign,oldcual,timeSlotStart,timeSlotEnd,sentMqtt;
 EXTERN int                          oldCurBeat[MAXDEVSS],oldCurLife[MAXDEVSS],lastkwh[MAXDEVSS],msgcount,s_retry_num,mesh_layer ;
-EXTERN bool                         donef,mqttf,is_running;
+EXTERN bool                         donef,mqttf,is_running,webLogin;
+EXTERN bool                         nakf,logof,okf,favf;
 EXTERN FramSPI						fram;
 EXTERN SemaphoreHandle_t 		    framSem,flashSem,s_route_table_lock;
 EXTERN bool                         framFlag;
@@ -41,7 +42,7 @@ EXTERN float                        amps[MAXDEVSS];
 EXTERN u8g2_t                       u8g2; // a structure which will contain all the data for one display
 #endif
 EXTERN EventGroupHandle_t 			wifi_event_group,s_wifi_event_group;
-EXTERN TimerHandle_t                firstTimer,repeatTimer;
+EXTERN TimerHandle_t                firstTimer,repeatTimer,webTimer;
 // EXTERN char*                        MESH_TAG;
 EXTERN mesh_addr_t                  s_route_table[CONFIG_MESH_ROUTE_TABLE_SIZE];
 EXTERN int                          s_route_table_size;
@@ -49,4 +50,8 @@ EXTERN loglevel_t                   loglevel;
 EXTERN esp_netif_t*                 esp_sta; 
 EXTERN mesh_addr_t                  mesh_parent_addr;    
 EXTERN esp_ip4_addr_t               s_current_ip;       
+EXTERN httpd_handle_t 				wserver;
+EXTERN wstate_t						webState;
+EXTERN char                         gwStr[20],*tempb;
+
 #endif
