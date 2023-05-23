@@ -14,10 +14,13 @@
 static esp_err_t conn_base(httpd_req_t *req);
 static esp_err_t configure(httpd_req_t *req);
 
-extern const unsigned char params_start[] 		asm("_binary_index_html_start");	//default base html
+extern const unsigned char params_start[] 		asm("_binary_indexmin_html_start");	//default base html
 extern const uint8_t server_cert_pem_start[] 	asm("_binary_serverkey_pem_start");	//for ssl
+extern const unsigned char ok_start[] 			asm("_binary_ok_png_start");
+extern const unsigned char ok_end[] 			asm("_binary_ok_png_end");
+extern const unsigned char nak_start[] 			asm("_binary_nak_png_start");
+extern const unsigned char nak_end[] 			asm("_binary_nak_png_end");
 
-// extern void mdelay(uint32_t a);
 extern void delay(uint32_t a);
 extern void write_to_flash();
 extern uint32_t xmillis();
@@ -25,9 +28,11 @@ extern uint32_t xmillis();
 // int wifi_bytes=wifi_end-wifi_start;
 // int check_bytes=check_end-check_start;
 // int nocheck_bytes=nocheck_end-nocheck_start;
+int ok_bytes=ok_end-ok_start;
+int nak_bytes=nak_end-nak_start;
 
 typedef struct httpd_uri ur;
-#define MAXURLS 2
+#define MAXURLS 4
 ur urls[MAXURLS];
 
 bool getParam(char *buf,char *cualp,char *donde)
@@ -38,19 +43,41 @@ bool getParam(char *buf,char *cualp,char *donde)
 		return false;
 }
 
-void init_urls()
+esp_err_t sendok(httpd_req_t *req)
 {
-	urls[0].uri       = "/";				urls[0].handler   = conn_base;
-	urls[1].uri       = "/configure";		urls[1].handler   = configure;
+	httpd_resp_set_hdr(req,"Cache-Control","private, max-age=86400");
+	httpd_resp_set_type(req,"image/png");
+	httpd_resp_send(req,(char*)ok_start,ok_bytes);
+	return ESP_OK;
+}
+
+esp_err_t sendnak(httpd_req_t *req)
+{
+	httpd_resp_set_hdr(req,"Cache-Control","private, max-age=86400");
+	httpd_resp_set_type(req,"image/png");
+	httpd_resp_send(req,(char*)nak_start,nak_bytes);
+
+	return ESP_OK;
 }
 
 void setHeaders(httpd_req_t *req,char * tipo)
 {
-	httpd_resp_set_hdr(req,"Cache-Control","public, max-age=86400");
+	httpd_resp_set_hdr(req,"Cache-Control","public, no-cache");
 	httpd_resp_set_hdr(req,"Access-Control-Allow-Credentials","true");
 	httpd_resp_set_hdr(req,"Access-Control-Allow-Origin","*");
 	httpd_resp_set_type(req,tipo);
 }
+
+
+void init_urls()
+{
+	urls[0].uri       = "/";				urls[0].handler   = conn_base;
+	urls[1].uri       = "/configure";		urls[1].handler   = configure;
+	urls[2].uri       = "/ok.png";			urls[2].handler   = sendok;
+    urls[3].uri       = "/nak.png";			urls[3].handler   = sendnak;
+}
+
+
 
 static esp_err_t http_event_handle(esp_http_client_event_t *evt)
 {
@@ -124,8 +151,7 @@ static esp_err_t configure(httpd_req_t *req)
 	char *buf=NULL;
 	char *answer;
 	bool errores=false;
-
-
+printf("Configuration\n");
 	buf_len = httpd_req_get_url_query_len(req) + 1;
 	if (buf_len > 1)
 	{
@@ -135,45 +161,82 @@ static esp_err_t configure(httpd_req_t *req)
 			if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK)
 			{
 				bzero(param,sizeof(param));
+				if(getParam(buf,(char*)"passw",param))
+				{
+					strcpy(laclave,param);
+					uint32_t keyread=atoi(laclave);
+					printf("Key %d %d\n",keyread,theConf.confpassword);
 
-					if(getParam(buf,(char*)"passw",param))
+					if(keyread!=theConf.confpassword)
 					{
-						strcpy(laclave,param);
-						errores=false;
-						for (int a=0;a<8;a++)
-						{
-							sprintf(temp,"m%d",a);
-							if(!getParam(buf,temp,(char*)&medidor[a].mid))
-							{
-								printf("Name error meter %s %d\n",temp,a);
-								errores=true;
-							}
-							sprintf(temp,"b%d",a);
-							getSetParameter(buf,temp,800,3000,800,(int*)&medidor[a].bpk);
-							sprintf(temp,"s%d",a);
-							getSetParameter(buf,temp,0,3000000,0,(int*)&medidor[a].kwhstart);
-						}					
-						char * todos=(char*)malloc(1000);
-						if(todos)
-						{
-							bzero(todos,1000);
-							sprintf(todos,errores?"Failed":"Ok");
-							// sprintf(todos,answer,theConf.meterConnName);
-							httpd_resp_set_hdr(req,"Access-Control-Allow-Credentials","true");
-							httpd_resp_set_hdr(req,"Access-Control-Allow-Origin","*");
-							httpd_resp_send(req,todos, strlen(todos));
-							delay(200);
-							free(todos);
-						}		
-						if(!errores)
-						{
-							printf("Restarting\n");
-							// esp_restart();
-						}
+						printf("Not same key %d %d\n",keyread,theConf.confpassword);
+						sendnak(req);
+						return ESP_OK;
 					}
-				}
+					errores=false;
+					theConf.confpassword=0;			//reset password, ONE USE only
+					write_to_flash();
+					//mesh and network paramerters
+					getSetParameter(buf,"meshid",1,100,1,(int*)&theConf.meshid);
+					theConf.meshid+=BASEMESH;		//base is 0x75
+					getSetParameter(buf,"nodeid",1,100000,1,(int*)&theConf.controllerid);
+					getSetParameter(buf,"subn",1,100,1,(int*)&theConf.subnode);
+
+					// mqtt topic parameters
+					getSetParameter(buf,"prov",1,200,1,(int*)&theConf.provincia);
+					getSetParameter(buf,"cant",1,500,1,(int*)&theConf.canton);
+					getSetParameter(buf,"parro",1,500,1,(int*)&theConf.parroquia);
+					getSetParameter(buf,"codp",1,1000000,1,(int*)&theConf.codpostal);
+
+					for (int a=1;a<9;a++)
+					{
+						sprintf(temp,"m%d",a);
+						if(!getParam(buf,temp,(char*)&medidor[a-1].mid))
+						{
+							printf("Name error meter %s %d\n",temp,a);
+							errores=true;
+						}
+						// printf("%s=%s\n",temp,medidor[a-1].mid);
+						sprintf(temp,"b%d",a);
+						getSetParameter(buf,temp,800,3000,800,(int*)&medidor[a-1].bpk);
+						// printf("%s=%d\n",temp,medidor[a-1].bpk);
+						sprintf(temp,"s%d",a);
+						getSetParameter(buf,temp,0,3000000,0,(int*)&medidor[a-1].kwhstart);
+						// printf("%s=%d\n",temp,medidor[a-1].kwhstart);
+					}					
+					
+					if(errores)
+					{
+						sendnak(req);
+						printf("Configuration aborted\n");
+					}
+					else
+					{
+						sendok(req);
+						// save data to flash and Fram
+						theConf.meterconf=true; // configuration is done
+						write_to_flash();
+						for(int a=0;a<8;a++)
+						{
+							if(medidorlock[a] )
+							// if(medidorlock[a] || strlen(medidor[a].mid)==0)
+							{
+								// printf("Skipping %d\n",a);
+								continue;		//skip this
+							}
+
+							medidor[a].lifekwh=medidor[a].kwhstart;
+							fram.write_meter(a,(uint8_t*)&medidor[a],sizeof(medidor[0]));
+						}
+						delay(1000);
+						printf("Configuration done\n");
+					}
+					printf("Restarting\n");
+					esp_restart();
+				}					
 			}
-			free(buf);
+		}
+		free(buf);
 	}
 	return ESP_OK;
 }
@@ -270,6 +333,8 @@ int sendHtml(httpd_req_t *req,const char * format, ...)
 void wmonitorCallback( TimerHandle_t xTimer )
 {
 	webState=wNONE;
+	printf("TimeOut Webserver\n");
+	// esp_restart();
 }
 
 static esp_err_t conn_base(httpd_req_t *req)		//default page
@@ -279,15 +344,20 @@ static esp_err_t conn_base(httpd_req_t *req)		//default page
 	setHeaders(req,(char*)"text/html");
 
 	webLogin=false;			//Reset login state
-	bzero(tempb,3000);
-	if(sendHtml(req,(char*)params_start,"Node1","",medidor[0].mid,medidor[0].bpk,medidor[0].kwhstart,
-	medidor[1].mid,medidor[1].bpk,medidor[1].kwhstart,
-	medidor[2].mid,medidor[2].bpk,medidor[2].kwhstart,
-	medidor[3].mid,medidor[3].bpk,medidor[3].kwhstart,
-	medidor[4].mid,medidor[4].bpk,medidor[4].kwhstart,
-	medidor[5].mid,medidor[5].bpk,medidor[5].kwhstart,
-	medidor[6].mid,medidor[6].bpk,medidor[6].kwhstart,
-	medidor[7].mid,medidor[7].bpk,medidor[7].kwhstart)!=0)
+	bzero(tempb,7000);
+
+	if(sendHtml(req,(char*)params_start,
+	theConf.meshid-BASEMESH,theConf.controllerid,theConf.subnode,
+	theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,
+	medidor[0].mid,medidorlock[0]?"disabled":"",medidor[0].bpk,medidorlock[0]?"disabled":"",medidor[0].kwhstart,medidorlock[0]?"disabled":"",medidor[0].lifekwh,
+	medidor[01].mid,medidorlock[1]?"disabled":"",medidor[1].bpk,medidorlock[1]?"disabled":"",medidor[1].kwhstart,medidorlock[1]?"disabled":"",medidor[1].lifekwh,
+	medidor[02].mid,medidorlock[2]?"disabled":"",medidor[02].bpk,medidorlock[02]?"disabled":"",medidor[02].kwhstart,medidorlock[02]?"disabled":"",medidor[2].lifekwh,
+	medidor[03].mid,medidorlock[3]?"disabled":"",medidor[03].bpk,medidorlock[03]?"disabled":"",medidor[03].kwhstart,medidorlock[03]?"disabled":"",medidor[3].lifekwh,
+	medidor[04].mid,medidorlock[04]?"disabled":"",medidor[04].bpk,medidorlock[04]?"disabled":"",medidor[04].kwhstart,medidorlock[04]?"disabled":"",medidor[4].lifekwh,
+	medidor[05].mid,medidorlock[05]?"disabled":"",medidor[05].bpk,medidorlock[05]?"disabled":"",medidor[05].kwhstart,medidorlock[05]?"disabled":"",medidor[5].lifekwh,
+	medidor[06].mid,medidorlock[06]?"disabled":"",medidor[06].bpk,medidorlock[06]?"disabled":"",medidor[06].kwhstart,medidorlock[06]?"disabled":"",medidor[6].lifekwh,
+	medidor[07].mid,medidorlock[07]?"disabled":"",medidor[07].bpk,medidorlock[07]?"disabled":"",medidor[07].kwhstart,medidorlock[07]?"disabled":"",medidor[7].lifekwh
+	)!=0)
 		printf("Failed to send html\n");
 
 	webState=wNONE;
@@ -331,7 +401,7 @@ void urldecode2(char *dst, const char *src)
 void start_webserver(void *pArg)
 {
 	printf("Stating webserver\n");
-	tempb=(char*)malloc(3000);
+	tempb=(char*)malloc(7000);
 	if(!tempb)
 	{
 		printf("No ram\n");
@@ -361,7 +431,7 @@ void start_webserver(void *pArg)
 
    int ret=httpd_ssl_start(&wserver, &config);	//global wserver to stop it if Firmware called
    #endif
-   printf("Webstart code %x\n",ret);
+//    printf("Webstart code %x\n",ret);
    if(ret== ESP_OK)
     {
 	   #ifdef DEBUGX
@@ -376,14 +446,14 @@ void start_webserver(void *pArg)
 
 		webState=wNONE;
 		webLogin=true;
-        // webTimer=xTimerCreate("Monitor",600000 /portTICK_PERIOD_MS,pdTRUE,NULL,&wmonitorCallback);	//10 minutes if no activity back to wNONE
+        webTimer=xTimerCreate("Monitor",60000 /portTICK_PERIOD_MS,pdTRUE,NULL,&wmonitorCallback);	//10 minutes if no activity back to wNONE
 
     	bzero(gwStr,sizeof(gwStr));
 		
         // Set URI handlers
     	for(int a=0;a<MAXURLS;a++)
     	{
-    		printf("url %s\n",urls[a].uri);
+    		// printf("url %s\n",urls[a].uri);
     		urls[a].method=HTTP_GET;
     		urls[a].user_ctx=NULL;
     		ret=httpd_register_uri_handler(wserver, &urls[a]);
@@ -399,7 +469,7 @@ void start_webserver(void *pArg)
     else
     	printf("Could not start webserver %x %s\n",ret,esp_err_to_name(ret));
 	printf("Web die\n");
-    vTaskDelete(NULL);
+    // vTaskDelete(NULL);
 }
 
 

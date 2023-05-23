@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Configure Meters</title>
+    <style>
+        body {
+            background-color: rgb(108, 109, 105);
+            text-align: center;
+            color: white;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        input {
+            text-align:center;
+            margin-left:2px;
+        }
+    </style>
+</head>
+
+<body>
+    <div style="text-align:center">
+        <h1>Meter Building Conf</h1>
+
+        <form method="get">
+            <!--  Main Ids, mesh and Node id for mqtt. Subnode for Mesh internals -->
+        
+        <label for="meshid" style="color:rgb(2, 0, 0);font-size:25px">MeshId&nbsp;</label>
+        <input name="meshid" type="text" style="margin-top:10px;width: 40px;;font-size:15px" id="meshid" value="%d"></input>
+        <label for="nodeid" style="color:rgb(2, 0, 0);font-size:25px">&nbsp;NodeId&nbsp;</label>
+        <input name="nodeid" type="text" style="margin-top:10px;width: 40px;;font-size:15px" id="nodeid" value="%d"></input>
+        <label for="subn" style="color:rgb(2, 0, 0);font-size:25px">&nbsp;SubNode&nbsp;</label>
+        <input name="subn" type="text" style="margin-top:10px;width: 40px;;font-size:15px" id="subn" value="%d"></input>
+        <br><br>
+ 
+        <!-- Provinicia y sector para Mqtt Topic -->
+        <label for="prov" style="color:rgb(42, 72, 192)"> Prov</label>
+        <input name="prov" type="text" style="width: 20px;" id="prov" value="%d" ></input>
+        <label for="cant" style="color:rgb(42, 72, 192)">Canton</label>
+        <input name="cant" type="text" style="width: 20px;" id="cant" value="%d" ></input>
+        <label for="parro" style="color:rgb(42, 72, 192)">Parro</label>
+        <input name="parro" type="text" style="width: 20px;" id="parro" value="%d" ></input>
+        <label for="codp" style="color:rgb(42, 72, 192)">CodPostal</label>
+        <input name="codp" type="text" style="width: 60px;" id="copd" value="%d" ></input>
+        <br><br>
+
+        <!-- Medter id, beats per kw and Starty kw reading -->
+        <label for="m1" style="color:rgb(192, 140, 42);margin-left:70px">MeterId</label>
+        <label for="m1" style="color:rgb(192, 140, 42);margin-left:90px">BPK</label>
+        <label for="m1" style="color:rgb(192, 140, 42);margin-left:30px">Start</label>
+        <label for="m1" style="color:rgb(192, 140, 42);margin-left:50px">kWh</label><br>
+
+       1 <input name="m1" type="text" style="width: 200px;" id="m1" value="%s" %s></input>
+        <input name="b1" type="text" style="width: 40px;" id="b1" value="%d"  %s></input>
+        <input name="s1" type="text" style="width: 60px;" id="s1" value="%d" %s></input>
+        <input name ="k1" type="text" style="width: 60px;" id="k1" value="%d" disabled></input>
+        <br>
+        
+       2 <input name="m2" type="text" style="width: 200px;" id="m2" value="%s" %s></input>
+        <input name="b2" type="text" style="width: 40px;" id="b2" value="%d" %s></input>
+        <input name="s2" type="text" style="width: 60px;" id="s2" value="%d" %s></input>
+        <input name ="k2" type="text" style="width: 60px;" id="k2" value="%d" disabled></input>
+        <br>
+        
+        3 <input name="m3" type="text" style="width: 200px;" id="m3" value="%s" %s></input>
+        <input name="b3" type="text" style="width: 40px;" id="b3" value="%d" %s></input>
+        <input name="s3" type="text" style="width: 60px;" id="s3" value="%d" %s></input>
+        <input name ="k3" type="text" style="width: 60px;" id="k3" value="%d" disabled></input>
+        <br>
+        
+        4 <input name="m4" type="text" style="width: 200px;" id="m4" value="%s" %s></input>
+        <input name="b4" type="text" style="width: 40px;" id="b4" value="%d" %s ></input>
+        <input name="s4" type="text" style="width: 60px;" id="s4" value="%d" %s></input>
+        <input name ="k4" type="text" style="width: 60px;" id="k4" value="%d" disabled></input>
+        <br>
+        
+        5 <input name="m5" type="text" style="width: 200px;" id="m5" value="%s" %s></input>
+        <input name="b5" type="text" style="width: 40px;" id="b5" value="%d" %s></input>
+        <input name="s5" type="text" style="width: 60px;" id="s5" value="%d" %s></input>
+        <input name ="k5" type="text" style="width: 60px;" id="k5" value="%d" disabled></input>
+        <br>
+        
+       6 <input name="m6" type="text" style="width: 200px;" id="m6" value="%s" %s></input>
+        <input name="b6" type="text" style="width: 40px;" id="b6" value="%d" %s></input>
+        <input name="s6" type="text" style="width: 60px;" id="s6" value="%d" %s></input>
+        <input name ="k6" type="text" style="width: 60px;" id="k6" value="%d" disabled></input>
+        <br>
+        
+       7  <input name="m7" type="text" style="width: 200px;" id="m7" value="%s" %s></input>
+        <input name="b7" type="text" style="width: 40px;" id="b7" value="%d" %s></input>
+        <input name="s7" type="text" style="width: 60px;" id="s7" value="%d" %s></input>
+        <input name ="k7" type="text" style="width: 60px;" id="k7" value="%d" disabled></input>
+        <br>
+        
+        8 <input name="m8" type="text" style="width: 200px;" id="m8" value="%s" %s></input>
+        <input name="b8" type="text" style="width: 40px;" id="b8" value="%d" %s></input>
+        <input name="s8" type="text" style="width: 60px;" id="s8" value="%d" %s></input>
+        <input name ="k8" type="text" style="width: 60px;" id="k8" value="%d" disabled></input>
+        <br>
+       <br>
+
+
+       <!-- <label for="passw" style="color:rgb(192, 42, 42);font-size:30px">Password</label> -->
+       <input name="passw" type="password" style="margin-top:10px;;width: 40px;"></input>
+       <!-- <h2 style="color:lightcoral">Ingrese Parametros</h2> -->
+       
+         <input id="button1"  class="button" type="submit" value="Guardar" formaction="/configure" style="color:white;margin-top:5px;margin-left:5px;height:40px;background-color:blue">
+            </form>
+        </div>
+</body>
+
+</html>

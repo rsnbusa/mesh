@@ -18,7 +18,6 @@ void delay(uint32_t cuanto)
 uint32_t xmillis()
 {
     return esp_timer_get_time()/1000;
-	// return xTaskGetTickCount() * portTICK_PERIOD_MS;
 }
 
 uint32_t xmillisFromISR()
@@ -725,7 +724,8 @@ void init_vars()
     mesh_layer = -1;
     // mesh id as we cannot use static variable configuration
     memset(MESH_ID,0x77,6);
-    MESH_ID[5]=0x76;
+    // printf("Mesh %x\n",theConf.meshid);
+    MESH_ID[5]=theConf.meshid;
 
 //cmd and info queue names
     sprintf(cmdQueue,"meter/%d/%d/%d/%d/%d/cmd",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
@@ -810,6 +810,11 @@ static void init_fram( bool load)
 				fram.read_meter(a,(uint8_t*)&medidor[a],sizeof(meterType));
                 medidor[a].lastclock=xmillis();
                 lastkwh[a]=medidor[a].lifekwh;      //track progress to avoid sending same reading every time 
+                if(medidor[a].lifekwh>medidor[a].kwhstart)  // see if meter has had activity 
+                    medidorlock[a]=true;    //lock it, cannot be changed
+                else   
+                    medidorlock[a]=false;   // not locked, can be modified by comfiguration manager
+                    // printf("Med[%d] %s\n",a,medidorlock[a]?"Y":"N");
             }
 	    }
         else
@@ -1302,10 +1307,75 @@ printf("Mesh\n");
     }
 }
 
+
+static void wifi_event_handler_ap(void* arg, esp_event_base_t event_base,
+                                    int32_t event_id, void* event_data)
+{
+    if (event_id == WIFI_EVENT_AP_STACONNECTED) {
+        wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
+        ESP_LOGI(MESH_TAG, "station "MACSTR" join, AID=%d",
+                 MAC2STR(event->mac), event->aid);
+    } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) {
+        wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
+        ESP_LOGI(MESH_TAG, "station "MACSTR" leave, AID=%d",
+                 MAC2STR(event->mac), event->aid);// test remote
+    }
+}
+
+void wifi_init_softap(void)
+{
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_ap();
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                        ESP_EVENT_ANY_ID,
+                                                        &wifi_event_handler_ap,
+                                                        NULL,
+                                                        NULL));
+
+    wifi_config_t wifi_config;
+    bzero(&wifi_config,sizeof(wifi_config));
+    char apssid[32];
+    char appsw[8];
+    uint8_t mac[6];
+
+    esp_wifi_get_mac(WIFI_IF_AP,mac);
+    sprintf(apssid,"mweb%2x%2x%2x%2x\n", mac[0],mac[1],mac[2],mac[3]);
+    printf("Web Name %s\n",apssid);
+    // strcpy(apssid,"web");
+    strcpy(appsw,"csttpstt");
+
+    memcpy(&wifi_config.ap.ssid,apssid,strlen(apssid));
+    memcpy(&wifi_config.ap.password,appsw,strlen(appsw));
+    // printf("SSID [%s] Pass [%s]\n",(char*)wifi_config.ap.ssid,(char*)wifi_config.ap.password);
+    wifi_config.ap.ssid_len = strlen(apssid);
+    wifi_config.ap.channel = 4;
+    wifi_config.ap.max_connection = 1;
+    wifi_config.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(MESH_TAG, "wifi_init_softap finished. SSID:%s password:%s channel:%d",
+             apssid, appsw, 4);
+             
+             //start web server
+             start_webserver(NULL);
+}
+
 void meter_configure()
 {
     printf("Configure Meters\n");
-
+    wifi_init_softap();
+    while(true)
+    {
+        delay(1000);        // Webserver will restart after configuration or timeout
+    }
 }
 
 void app_main(void)
@@ -1387,9 +1457,13 @@ void app_main(void)
 //check mesh config
     if(!theConf.meshconf)
         park_state();
+
+    printf("Meter Conf %d\n",theConf.meterconf);
     
-    if(!theConf.meterconf || theConf.bootflag)
-        meter_configure;
+    if(!theConf.meterconf )
+    {
+        meter_configure();
+    }
 
    xTaskCreate(&displayManager,"displ",10240,NULL, 10, NULL); 	        // show booting sequence active
     

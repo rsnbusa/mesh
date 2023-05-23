@@ -25,3 +25,4 @@
 #define WIFI_FAIL_BIT                   BIT1
 
 #define FREEANDNULL(x)		            if(x) {free(x);x=NULL;}
+#define BASEMESH                        117

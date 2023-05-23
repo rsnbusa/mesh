@@ -379,12 +379,14 @@ int cmdConfig(int argc, char **argv)
   lafecha(theConf.bornDate,buf);
   fram.read_guard((uint8_t*)&lastwrite);
   lafecha(lastwrite,buf2);
+printf("Mesh Active %s\n",esp_mesh_is_device_active()?"Yes":"No");
 
   uint8_t *my_mac = mesh_netif_get_station_mac();
   printf("======= Mesh Configuration Date: %s=======\n",fecha);
   printf("Firmware Version:%s Root:%s MAC:" MACSTR " SSID:%s LogLevel:%d\n", running_app_info.version,esp_mesh_is_root()?"Yes":"No",MAC2STR(my_mac),
   myssid,theConf.loglevel);
-  printf("Mesh config:%s Meter config:%s\n",theConf.meshconf?theConf.meshconf>1?"NonRoot":"Provision":"Not Conf",theConf.meterconf?"Yes":"NO");
+  printf("Mesh config:%s Mesh Id: %02x Meter config:%s SubNode: %d\n",theConf.meshconf?theConf.meshconf>1?"NonRoot":"Provision":"Not Conf",
+          theConf.meshid,theConf.meterconf?"Yes":"NO",theConf.subnode);
   if(esp_mesh_is_root())
   {
     printf("Id : %d  Address: %s Created %s Slot %d  Cycle %d\n",theConf.controllerid,theConf.direccion,buf,theConf.mqttSlots,theConf.pubCycle);
@@ -514,6 +516,80 @@ int cmdLogLevel(int argc, char **argv)
   return 0;
 }
 
+int cmdResetConf(int argc, char **argv)
+{
+  uint32_t pop=0;
+  mqttSender_t mensaje;
+  char *mqttmsg;
+  mesh_data_t data;
+
+    int nerrors = arg_parse(argc, argv, (void **)&resetlevel);
+    if (nerrors != 0) {
+        arg_print_errors(stderr, resetlevel.end, argv[0]);
+        return 0;
+    }
+  if (resetlevel.cflags->count) 
+  {
+      int lev=resetlevel.cflags->ival[0];
+      printf("Flags set to %d\n",lev);
+      switch(lev) {
+        case 0:
+          theConf.meterconf=0;
+          theConf.meshconf=0;
+          erase_config();
+          write_to_flash();
+          break;
+        case 1:
+          if(theConf.meshconf)
+          {
+            srand(time(NULL));
+            pop= (rand() % 999999);
+            mqttmsg=(char*)malloc(200);
+            if(mqttmsg)
+            {
+              sprintf(mqttmsg, "{\"cmd\":\"conf\",\"passw\":%d,\"subnode\":%d}",pop,theConf.subnode);
+              printf("Config Password %s\n",mqttmsg);
+              mensaje.msg=mqttmsg;
+              mensaje.lenMsg=strlen(mensaje.msg);
+              if(esp_mesh_is_root())    //if main Root server, he has Mqtt access send the message directly
+              {
+                if(xQueueSend(mqttSender,&mensaje,0)!=pdPASS)
+                    printf("Error queueing password msg\n");
+                theConf.confpassword=pop;
+                xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// FORCE sending it !!!!!
+              }
+              else  // need to send an internal message to Root to send the password
+              {
+                  data.proto = MESH_PROTO_BIN;
+                  data.tos = MESH_TOS_P2P;
+                  data.data=(uint8_t*)mqttmsg;
+                  data.size=strlen(mqttmsg)+1;
+                  printf("Sending Password to Root [%s]...",(char*)data.data);
+                  int err = esp_mesh_send(NULL, &data, 0, NULL, 0);
+                  // int err = esp_mesh_send(NULL, &data, MESH_DATA_P2P, NULL, 0);
+                  printf("done %d\n",err);
+                  free(mqttmsg);                 
+              }
+              theConf.meterconf=0;
+              write_to_flash();
+            }
+            else 
+            {
+              printf("Ram Failed Mqtt Password\n");
+            }
+          }
+          break;
+        case 2:
+          theConf.meshconf=0;
+          write_to_flash();
+          break;
+        default:
+          printf("Wronmg choice of reset\n");
+      }
+  }
+  return 0;
+}
+
 void kbd()
 {
   esp_console_repl_t       *repl=NULL;
@@ -543,6 +619,9 @@ void kbd()
 
   loglevel.level=                 arg_int0(NULL, "level", "0-5(None-Error-Warn-Info-Debug-Verbose)", "Log Level");
   loglevel.end=                   arg_end(1);
+
+  resetlevel.cflags=                 arg_int0(NULL, "Flag", "0-2(0=All 1=Configuration 2=Mesh)", "Reset Flags");
+  resetlevel.end=                   arg_end(1);
 
     const esp_console_cmd_t fram_cmd = {
         .command = "fram",
@@ -616,6 +695,14 @@ void kbd()
         .argtable = &loglevel
     };
 
+    const esp_console_cmd_t resetconf_cmd = {
+        .command = "resetConf",
+        .help = "Reset Conf flags",
+        .hint = NULL,
+        .func = &cmdResetConf,
+        .argtable = &resetlevel
+    };
+
 
     ESP_ERROR_CHECK(esp_console_cmd_register(&fram_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&meter_cmd));
@@ -626,6 +713,7 @@ void kbd()
     ESP_ERROR_CHECK(esp_console_cmd_register(&ota_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&sendmesh_cmd));
     ESP_ERROR_CHECK(esp_console_cmd_register(&loglevel_cmd));
+    ESP_ERROR_CHECK(esp_console_cmd_register(&resetconf_cmd));
 
 
    ESP_ERROR_CHECK(esp_console_start_repl(repl));
