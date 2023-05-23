@@ -288,7 +288,7 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
 
-				//  printf("Mqtt connected\n");
+				 printf("Mqtt connected\n");
 
         	// mqttf=true;
             esp_mqtt_client_subscribe(client,cmdQueue, 0);
@@ -296,7 +296,7 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
           //  printf("Subscribed to [%s]\n",cmdQueue);
             // printf("Subscribed\n");
             //set bit to allow submode to work and not crash
-           // xEventGroupSetBits(wifi_event_group, MQTT_BIT);//message sent bit
+           xEventGroupSetBits(wifi_event_group, MQTT_BIT);//message sent bit
 
             break;
         case MQTT_EVENT_DISCONNECTED:
@@ -433,7 +433,7 @@ static void mqtt_app_start(void)
 
 // int ssllen=hive_end-hive_start;
 
-    wifi_event_group = xEventGroupCreate();
+    // wifi_event_group = xEventGroupCreate();
 
 
     bzero((void*)&mqtt_cfg,sizeof(mqtt_cfg));
@@ -726,7 +726,7 @@ void init_vars()
     memset(MESH_ID,0x77,6);
     // printf("Mesh %x\n",theConf.meshid);
     MESH_ID[5]=theConf.meshid;
-
+    mqttf=false;
 //cmd and info queue names
     sprintf(cmdQueue,"meter/%d/%d/%d/%d/%d/cmd",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
     sprintf(infoQueue,"meter/%d/%d/%d/%d/%d/info",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
@@ -1081,6 +1081,18 @@ void post_root()
 
 }
 
+void ip_event_handler_conf(void *arg, esp_event_base_t event_base,
+                      int32_t event_id, void *event_data)
+{
+    ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
+    ESP_LOGI(MESH_TAG, "<CONF IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip));
+    s_current_ip.addr = event->ip_info.ip.addr;
+    // printf("Starting Mqtt Conf server\n");
+    mqtt_app_start();
+    post_root();
+ }
+
+
 void ip_event_handler(void *arg, esp_event_base_t event_base,
                       int32_t event_id, void *event_data)
 {
@@ -1093,11 +1105,11 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
     ESP_ERROR_CHECK(esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns));
     mesh_netif_start_root_ap(esp_mesh_is_root(), dns.ip.u_addr.ip4.addr);
 #endif
-    // esp_mesh_comm_mqtt_task_start();
-         if (esp_mesh_is_root()) {
-    mqtt_app_start();
-    post_root();
- }
+    if (esp_mesh_is_root()) 
+    {
+        mqtt_app_start();
+        post_root();
+    }
 }
 
 static void get_device_service_name(char *service_name, size_t max)
@@ -1311,6 +1323,8 @@ printf("Mesh\n");
 static void wifi_event_handler_ap(void* arg, esp_event_base_t event_base,
                                     int32_t event_id, void* event_data)
 {
+    printf("Wifi Handler ap %d\n",event_id);
+
     if (event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
         ESP_LOGI(MESH_TAG, "station "MACSTR" join, AID=%d",
@@ -1320,13 +1334,20 @@ static void wifi_event_handler_ap(void* arg, esp_event_base_t event_base,
         ESP_LOGI(MESH_TAG, "station "MACSTR" leave, AID=%d",
                  MAC2STR(event->mac), event->aid);// test remote
     }
+    else if (event_id == WIFI_EVENT_STA_START)
+    {
+        printf("Sta Start\n");
+        esp_wifi_connect();
+    }
 }
 
-void wifi_init_softap(void)
+void wifi_init_network(bool como)
 {
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_ap();
+    if(como)
+        esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -1337,6 +1358,9 @@ void wifi_init_softap(void)
                                                         NULL,
                                                         NULL));
 
+    if(como)
+        ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_handler_conf, NULL));
+
     wifi_config_t wifi_config;
     bzero(&wifi_config,sizeof(wifi_config));
     char apssid[32];
@@ -1344,34 +1368,67 @@ void wifi_init_softap(void)
     uint8_t mac[6];
 
     esp_wifi_get_mac(WIFI_IF_AP,mac);
-    sprintf(apssid,"mweb%2x%2x%2x%2x\n", mac[0],mac[1],mac[2],mac[3]);
+    sprintf(apssid,"meter%2x%2x\n", mac[2],mac[3]);
     printf("Web Name %s\n",apssid);
-    // strcpy(apssid,"web");
-    strcpy(appsw,"csttpstt");
+    strcpy(appsw,"csttpstt");   //could use conf password or conn id as ap password
 
     memcpy(&wifi_config.ap.ssid,apssid,strlen(apssid));
     memcpy(&wifi_config.ap.password,appsw,strlen(appsw));
-    // printf("SSID [%s] Pass [%s]\n",(char*)wifi_config.ap.ssid,(char*)wifi_config.ap.password);
     wifi_config.ap.ssid_len = strlen(apssid);
     wifi_config.ap.channel = 4;
     wifi_config.ap.max_connection = 1;
     wifi_config.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    if(como)
+       ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    else
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
 
-    ESP_LOGI(MESH_TAG, "wifi_init_softap finished. SSID:%s password:%s channel:%d",
-             apssid, appsw, 4);
-             
-             //start web server
-             start_webserver(NULL);
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+
+    if (como)           //only if you are ROOT we have access to a knwon SSID and Password made by Provisioning
+    {
+        wifi_config_t config_sta;
+        esp_wifi_get_config( WIFI_IF_STA,&config_sta);      //get saved configuration by Provision Manager
+        bzero(&wifi_config,sizeof(wifi_config));//very important, do it again for sta else corrupted for ESP_IF_WIFI_STA
+       
+        strcpy((char*)wifi_config.sta.ssid,(char*)config_sta.sta.ssid);
+        strcpy((char*)wifi_config.sta.password,(char*)config_sta.sta.password);
+        printf("Conf Sta config ssid [%s][%s]\n",(char*)wifi_config.sta.ssid,(char*)wifi_config.sta.password);
+        // strcpy((char*)wifi_config.sta.ssid,"Porton");
+        // strcpy((char*)wifi_config.sta.password,"csttpstt");
+        wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA_PSK;
+        wifi_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    }
+    printf("Starting wifi\n");
+    ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_LOGI(MESH_TAG, "wifi_init_softap finished. SSID:%s password:%s channel:%d", apssid, appsw, 4);
+    //start web server
+    start_webserver(NULL);      //Root or NRT case always start the Webserver to configure Meters
 }
 
-void meter_configure()
+void meter_configure(bool como)
 {
-    printf("Configure Meters\n");
-    wifi_init_softap();
+    printf("Configure Meters...start network passw %d\n",theConf.confpassword);
+    wifi_init_network(como);
+
+    //send  CONFIGURE challenge to Host. Person doing configuration must call HQ (or automated system) to get password
+    if(como)
+    {
+        printf("Send a Mqtt message with password challenge wait\n");
+        // while(!mqttf)
+        //     delay(100);
+        xEventGroupWaitBits(wifi_event_group, MQTT_BIT,pdFALSE,pdTRUE,portMAX_DELAY);    //wait forever, this is the starting gun
+        printf("Mqtt ready... send it\n");
+        //send an mqtt message to Host since we are root and have access to router and mqtt manager
+    
+    }
+    else
+    {
+        printf("Send NON ROOT Challenge\n");
+        //send a mesh message to Root to send a mqtt message to Host
+    }
     while(true)
     {
         delay(1000);        // Webserver will restart after configuration or timeout
@@ -1454,21 +1511,23 @@ void app_main(void)
    kbd();      //start console
 #endif
 
+    wifi_event_group = xEventGroupCreate();
+
 //check mesh config
     if(!theConf.meshconf)
         park_state();
 
     printf("Meter Conf %d\n",theConf.meterconf);
     
-    if(!theConf.meterconf )
+    if(!theConf.meterconf && theConf.meshconf==1 )  // Root node
     {
-        meter_configure();
+        meter_configure(ROOT);      //start the STA for access to Router directly. it will reboot 
     }
 
    xTaskCreate(&displayManager,"displ",10240,NULL, 10, NULL); 	        // show booting sequence active
     
     ESP_ERROR_CHECK(esp_netif_init());
-    wifi_event_group = xEventGroupCreate();
+
 
     if(theConf.meshconf==2)
         esp_mesh_fix_root(true);        //force him to seek a root node.
@@ -1551,6 +1610,13 @@ else
 
      xTaskCreate(&esp_mesh_p2p_rx_main,"mesh",10240,NULL, 10, NULL); 	        // show booting sequence active
 
+// If Non Root check if need to configure Meters (needed the Mesh to send password challenge)
+if(!theConf.meterconf && theConf.meshconf==2)
+{
+    //start meter config without connecting to AP via Mesh itself
+    meter_configure(NRT); //we are NOT root
+
+}
 
     uint32_t ahora=0,dif=0;
     time_t now;
@@ -1610,5 +1676,5 @@ else
                 }
             }
         } 
-    } //segundo cambio
+    } 
 }

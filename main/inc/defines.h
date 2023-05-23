@@ -26,3 +26,5 @@
 
 #define FREEANDNULL(x)		            if(x) {free(x);x=NULL;}
 #define BASEMESH                        117
+#define ROOT                            true
+#define NRT                             false

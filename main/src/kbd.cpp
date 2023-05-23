@@ -385,8 +385,8 @@ printf("Mesh Active %s\n",esp_mesh_is_device_active()?"Yes":"No");
   printf("======= Mesh Configuration Date: %s=======\n",fecha);
   printf("Firmware Version:%s Root:%s MAC:" MACSTR " SSID:%s LogLevel:%d\n", running_app_info.version,esp_mesh_is_root()?"Yes":"No",MAC2STR(my_mac),
   myssid,theConf.loglevel);
-  printf("Mesh config:%s Mesh Id: %02x Meter config:%s SubNode: %d\n",theConf.meshconf?theConf.meshconf>1?"NonRoot":"Provision":"Not Conf",
-          theConf.meshid,theConf.meterconf?"Yes":"NO",theConf.subnode);
+  printf("Mesh config:%s Mesh Id: %02x Meter config:%s SubNode: %d Conf Passw:%d\n",theConf.meshconf?theConf.meshconf>1?"NonRoot":"Provision":"Not Conf",
+          theConf.meshid,theConf.meterconf?"Yes":"NO",theConf.subnode,theConf.confpassword);
   if(esp_mesh_is_root())
   {
     printf("Id : %d  Address: %s Created %s Slot %d  Cycle %d\n",theConf.controllerid,theConf.direccion,buf,theConf.mqttSlots,theConf.pubCycle);
