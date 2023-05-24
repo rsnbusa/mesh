@@ -2,7 +2,7 @@
 #define FORWARDS_H
 
 void set_senddata_timer();
-void kbd();
+void kbd(void *pArg);
 void displayManager(void *pArg);
 void delay(uint32_t a);
 uint32_t xmillis(void);

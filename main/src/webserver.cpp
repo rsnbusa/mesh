@@ -20,6 +20,8 @@ extern const unsigned char ok_start[] 			asm("_binary_ok_png_start");
 extern const unsigned char ok_end[] 			asm("_binary_ok_png_end");
 extern const unsigned char nak_start[] 			asm("_binary_nak_png_start");
 extern const unsigned char nak_end[] 			asm("_binary_nak_png_end");
+extern const unsigned char fav_start[] 			asm("_binary_favicon_ico_start");
+extern const unsigned char fav_end[] 			asm("_binary_favicon_ico_end");
 
 extern void delay(uint32_t a);
 extern void write_to_flash();
@@ -30,9 +32,10 @@ extern uint32_t xmillis();
 // int nocheck_bytes=nocheck_end-nocheck_start;
 int ok_bytes=ok_end-ok_start;
 int nak_bytes=nak_end-nak_start;
+int fav_bytes=fav_end-fav_start;
 
 typedef struct httpd_uri ur;
-#define MAXURLS 4
+#define MAXURLS 5
 ur urls[MAXURLS];
 
 bool getParam(char *buf,char *cualp,char *donde)
@@ -41,6 +44,14 @@ bool getParam(char *buf,char *cualp,char *donde)
 		return true;
 	else
 		return false;
+}
+
+esp_err_t sendfav(httpd_req_t *req)
+{
+	httpd_resp_set_hdr(req,"Cache-Control","private, max-age=86400");
+	httpd_resp_set_type(req,"image/png");
+	httpd_resp_send(req,(char*)fav_start,fav_bytes);
+	return ESP_OK;
 }
 
 esp_err_t sendok(httpd_req_t *req)
@@ -75,6 +86,7 @@ void init_urls()
 	urls[1].uri       = "/configure";		urls[1].handler   = configure;
 	urls[2].uri       = "/ok.png";			urls[2].handler   = sendok;
     urls[3].uri       = "/nak.png";			urls[3].handler   = sendnak;
+    urls[4].uri       = "/favicon.ico";			urls[4].handler   = sendfav;
 }
 
 

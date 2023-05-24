@@ -117,7 +117,11 @@ bool FramSPI::begin(int MOSI, int MISO, int CLK, int CS,SemaphoreHandle_t *framS
 
 		return true;
 	}
-	return false;
+	else
+	{
+		printf("could not init spi fram %x\n",ret);
+		return false;
+	}
 }
 
 

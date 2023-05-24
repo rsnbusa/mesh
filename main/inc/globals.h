@@ -20,11 +20,11 @@ const static int SENDH_BIT 				= BIT6;
 EXTERN pcnt_config_t                pcnt_config[8];
 EXTERN uint8_t                      ssignal[8],dia,mes,displayMode,suma[MAXDEVSS],s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE*6+1],MESH_ID[6];
 EXTERN int16_t                      theGuard,lastFont,lastalign,oldcual,timeSlotStart,timeSlotEnd,sentMqtt;
-EXTERN int                          oldCurBeat[MAXDEVSS],oldCurLife[MAXDEVSS],lastkwh[MAXDEVSS],msgcount,s_retry_num,mesh_layer ;
+EXTERN int                          cid,pid,oldCurBeat[MAXDEVSS],oldCurLife[MAXDEVSS],lastkwh[MAXDEVSS],msgcount,s_retry_num,mesh_layer ;
 EXTERN bool                         donef,mqttf,is_running,webLogin;
 EXTERN bool                         nakf,logof,okf,favf;
 EXTERN FramSPI						fram;
-EXTERN SemaphoreHandle_t 		    framSem,flashSem,s_route_table_lock;
+EXTERN SemaphoreHandle_t 		    framSem,flashSem,s_route_table_lock,I2CSem;
 EXTERN bool                         framFlag;
 EXTERN framArgs_t                   framArg;
 EXTERN meterType                    medidor[8];
@@ -37,7 +37,7 @@ EXTERN QueueHandle_t 				mqttQ,mqttR,mqttSender,pcnt_evt_queue;
 EXTERN cmdRecord 					cmds[MAXCMDS];
 EXTERN config_flash                 theConf;
 EXTERN nvs_handle 					nvshandle;
-EXTERN char                         cmdQueue[30],infoQueue[30],fecha[50];
+EXTERN char                         cmdQueue[30],infoQueue[30],configQueue[30],fecha[50];
 EXTERN float                        amps[MAXDEVSS];
 #ifdef DISPLAY  
 EXTERN u8g2_t                       u8g2; // a structure which will contain all the data for one display

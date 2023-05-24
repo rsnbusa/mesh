@@ -10,6 +10,7 @@ extern void erase_config();
 extern void write_to_flash();
 extern void start_ota();
 extern char * sendData(bool forced);
+void delay(uint32_t cuanto);
 
 static void lafecha(time_t now, char * donde)
 {
@@ -376,17 +377,22 @@ int cmdConfig(int argc, char **argv)
   //  return 0;
   }
 
+  mesh_type_t typ;
+  typ=esp_mesh_get_type();
+  char *tipo[]={"Idle","ROOT","NODE","LEAF","STA"};
   lafecha(theConf.bornDate,buf);
   fram.read_guard((uint8_t*)&lastwrite);
   lafecha(lastwrite,buf2);
-printf("Mesh Active %s\n",esp_mesh_is_device_active()?"Yes":"No");
-
   uint8_t *my_mac = mesh_netif_get_station_mac();
-  printf("======= Mesh Configuration Date: %s=======\n",fecha);
-  printf("Firmware Version:%s Root:%s MAC:" MACSTR " SSID:%s LogLevel:%d\n", running_app_info.version,esp_mesh_is_root()?"Yes":"No",MAC2STR(my_mac),
-  myssid,theConf.loglevel);
-  printf("Mesh config:%s Mesh Id: %02x Meter config:%s SubNode: %d Conf Passw:%d\n",theConf.meshconf?theConf.meshconf>1?"NonRoot":"Provision":"Not Conf",
-          theConf.meshid,theConf.meterconf?"Yes":"NO",theConf.subnode,theConf.confpassword);
+  printf("\n======= Mesh Configuration Date: %s=======\n",fecha);
+  printf("Firmware Version:%s NType:%s MAC:" MACSTR " LogLevel:%d\n", running_app_info.version,tipo[typ],MAC2STR(my_mac),
+  theConf.loglevel);
+  printf("Mesh config:%s Mesh Id: %02x Meter config:%d SubNode: %d Conf Passw:%d\n",theConf.meshconf?theConf.meshconf>1?"NonRoot":"Provision":"Not Conf",
+          theConf.meshid,theConf.meterconf,theConf.subnode,theConf.confpassword);
+  printf("Sta %s Psw %s ",conf.sta.ssid,conf.sta.password);
+  esp_wifi_get_config(WIFI_IF_AP, &conf);
+  printf("AP %s Pswd %s\n",conf.ap.ssid,conf.ap.password);
+
   if(esp_mesh_is_root())
   {
     printf("Id : %d  Address: %s Created %s Slot %d  Cycle %d\n",theConf.controllerid,theConf.direccion,buf,theConf.mqttSlots,theConf.pubCycle);
@@ -537,60 +543,23 @@ int cmdResetConf(int argc, char **argv)
           theConf.meterconf=0;
           theConf.meshconf=0;
           erase_config();
-          write_to_flash();
           break;
         case 1:
-          if(theConf.meshconf)
-          {
-            srand(time(NULL));
-            pop= (rand() % 999999);
-            mqttmsg=(char*)malloc(200);
-            if(mqttmsg)
-            {
-              sprintf(mqttmsg, "{\"cmd\":\"conf\",\"passw\":%d,\"subnode\":%d}",pop,theConf.subnode);
-              printf("Config Password %s\n",mqttmsg);
-              mensaje.msg=mqttmsg;
-              mensaje.lenMsg=strlen(mensaje.msg);
-              if(esp_mesh_is_root())    //if main Root server, he has Mqtt access send the message directly
-              {
-                if(xQueueSend(mqttSender,&mensaje,0)!=pdPASS)
-                    printf("Error queueing password msg\n");
-                theConf.confpassword=pop;
-                xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// FORCE sending it !!!!!
-              }
-              else  // need to send an internal message to Root to send the password
-              {
-                  data.proto = MESH_PROTO_BIN;
-                  data.tos = MESH_TOS_P2P;
-                  data.data=(uint8_t*)mqttmsg;
-                  data.size=strlen(mqttmsg)+1;
-                  printf("Sending Password to Root [%s]...",(char*)data.data);
-                  int err = esp_mesh_send(NULL, &data, 0, NULL, 0);
-                  // int err = esp_mesh_send(NULL, &data, MESH_DATA_P2P, NULL, 0);
-                  printf("done %d\n",err);
-                  free(mqttmsg);                 
-              }
-              theConf.meterconf=0;
-              write_to_flash();
-            }
-            else 
-            {
-              printf("Ram Failed Mqtt Password\n");
-            }
-          }
+          theConf.meterconf=0;
           break;
         case 2:
           theConf.meshconf=0;
-          write_to_flash();
           break;
         default:
-          printf("Wronmg choice of reset\n");
+          printf("Wrong choice of reset\n");
       }
+      write_to_flash();
+
   }
   return 0;
 }
 
-void kbd()
+void kbd(void *pArg)
 {
   esp_console_repl_t       *repl=NULL;
   esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
@@ -717,4 +686,6 @@ void kbd()
 
 
    ESP_ERROR_CHECK(esp_console_start_repl(repl));
+   while(true)
+      delay(10000);
 }

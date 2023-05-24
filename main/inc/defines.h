@@ -28,3 +28,5 @@
 #define BASEMESH                        117
 #define ROOT                            true
 #define NRT                             false
+#define MINB                            2000
+#define MAXB                            4000
