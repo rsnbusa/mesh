@@ -25,10 +25,70 @@ uint32_t xmillisFromISR()
 	return xTaskGetTickCountFromISR() * portTICK_PERIOD_MS;
 }
 
+static int findInternalCmds(const char * cual)
+{
+	for (int a=0;a<MAXINTCMDS;a++)
+	{
+		if(strcmp(internal_cmds[a],cual)==0)
+			return a;
+	}
+	return ESP_FAIL;
+}
+
+void send_to_config(char *mensaje)
+{
+
+    esp_mqtt_client_publish(clientCloud, configQueue, mensaje,strlen(mensaje), 1,0);
+
+    // char *mensaje=(char *)malloc(1000);
+    // if(!mensaje)
+    // {
+    //     printf("Now RAM for mesh Config msg\n");
+    //     return;
+    // }
+    // strcpy(mensaje,(char *)data->data);
+    // mqttMsg.msg=mensaje;
+    // mqttMsg.lenMsg=strlen(mensaje);
+    // // printf("Sending mqtt mesh msg [%s]\n",mensaje);
+    //  if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)
+    //     {
+    //         printf("Error queueing msg\n");
+    //         if(mqttMsg.msg)
+    //             free(mqttMsg.msg);  //due to failure
+    //     }
+}
+
 void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
 {
-        mqttSender_t mqttMsg;
+    mqttSender_t mqttMsg;
+    cJSON 	*elcmd;
 
+    elcmd= cJSON_Parse((char*)data->data);		//plain text to cJSON... must eventually cDelete elcmd
+    if (elcmd)
+    {   // valid json
+        cJSON *command= 		cJSON_GetObjectItem(elcmd,"cmd");
+        if(command)
+        {
+            //its an internal             elcmd= cJSON_Parse((char*)mqttHandle.message);		//plain text to cJSON... must eventually cDelete elcmd
+            int cualf=findInternalCmds(command->valuestring);
+            switch (cualf)
+            {
+            case 0:
+                esp_mqtt_client_publish(clientCloud, configQueue, (char*)data->data,strlen((char*)data->data), 1,0);
+                //send a msg to config topic instead
+                break;
+            case 1:// requireing source ssid and password, respond using a broadcast to all to update ssid/password
+                    
+                break;
+            
+            default:
+                break;
+            }
+            cJSON_Delete(elcmd);
+        }
+    }
+    else
+    { //used a relay
     // if (data->data[0] == CMD_ROUTE_TABLE) {
     //     int size =  data->size - 1;
     //     if (s_route_table_lock == NULL || size%6 != 0) {
@@ -73,7 +133,8 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
         else
             //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
             xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send everything now !!!!!
-    
+    }
+
 }
 
 
@@ -828,8 +889,15 @@ void init_vars()
     // stx=10;
     // sty=38;
 #endif
-    int x=0;
 
+// internal mesh commands 
+
+    int x=0;
+    strcpy(internal_cmds[x++],"conf");
+    strcpy(internal_cmds[x++],"router");
+
+
+    x=0;//reset counter
 // {"cmd":"initmeter","unit":7,"mid":"888888888888","bpk":800,"kwh":8888}
     strcpy((char*)&cmds[x].comando,         "restore");			        cmds[x].code=cmdRestore;		strcpy((char*)&cmds[x].abr,         "RST");		
 	strcpy((char*)&cmds[++x].comando,       "format");			        cmds[x].code=cmdFormat;			strcpy((char*)&cmds[x].abr,         "FRMT");		
