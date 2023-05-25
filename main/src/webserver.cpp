@@ -226,7 +226,7 @@ printf("Configuration\n");
 					{
 						sendok(req);
 						// save data to flash and Fram
-						theConf.meterconf=true; // configuration is done
+						theConf.meterconf=1; // configuration is done
 						write_to_flash();
 						for(int a=0;a<8;a++)
 						{

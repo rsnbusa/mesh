@@ -589,7 +589,7 @@ void kbd(void *pArg)
   loglevel.level=                 arg_int0(NULL, "level", "0-5(None-Error-Warn-Info-Debug-Verbose)", "Log Level");
   loglevel.end=                   arg_end(1);
 
-  resetlevel.cflags=                 arg_int0(NULL, "Flag", "0-2(0=All 1=Configuration 2=Mesh)", "Reset Flags");
+  resetlevel.cflags=                 arg_int0(NULL, "flag", "0-2(0=All 1=Configuration 2=Mesh)", "Reset Flags");
   resetlevel.end=                   arg_end(1);
 
     const esp_console_cmd_t fram_cmd = {

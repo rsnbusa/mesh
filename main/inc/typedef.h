@@ -75,7 +75,7 @@ typedef struct cmdRecord{
 }cmdRecord;
 
 typedef struct mqttRecord{
-    char        * msg;
+    char        * msg,*queue;
     uint16_t    lenMsg;
 }mqttSender_t;
 

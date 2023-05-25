@@ -29,41 +29,192 @@ static int findInternalCmds(const char * cual)
 {
 	for (int a=0;a<MAXINTCMDS;a++)
 	{
+        printf("IntCmd %s buscado por %s\n",internal_cmds[a],cual);
 		if(strcmp(internal_cmds[a],cual)==0)
 			return a;
 	}
 	return ESP_FAIL;
 }
 
-void send_to_config(char *mensaje)
+void send_ssid_broadcast()
 {
+    int err;
+    wifi_config_t       configsta;
+    mesh_data_t         data;
+    char                *topic;
 
-    esp_mqtt_client_publish(clientCloud, configQueue, mensaje,strlen(mensaje), 1,0);
-
-    // char *mensaje=(char *)malloc(1000);
-    // if(!mensaje)
-    // {
-    //     printf("Now RAM for mesh Config msg\n");
-    //     return;
-    // }
-    // strcpy(mensaje,(char *)data->data);
-    // mqttMsg.msg=mensaje;
-    // mqttMsg.lenMsg=strlen(mensaje);
-    // // printf("Sending mqtt mesh msg [%s]\n",mensaje);
-    //  if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)
-    //     {
-    //         printf("Error queueing msg\n");
-    //         if(mqttMsg.msg)
-    //             free(mqttMsg.msg);  //due to failure
-    //     }
+    topic=(char*)malloc(200);
+    //dont check null
+    err=esp_wifi_get_config( WIFI_IF_STA,&configsta);      // get station ssid and password
+    if(!err)
+    {
+        data.data=(uint8_t*)topic;
+        data.size   = strlen(topic);
+        data.proto  = MESH_PROTO_BIN;
+        data.tos    = MESH_TOS_P2P;
+        sprintf(topic,"{\"cmd\":\"router\",\"ssid\":%s,\"psw\":%s}",configsta.sta.ssid,configsta.sta.password);
+        //send a Broadcxast Message toa ll nodes to update SSID/Passwaord
+        err= esp_mesh_send( &GroupID, &data, MESH_DATA_P2P, NULL, MESH_OPT_SEND_GROUP); 
+        if(err)
+            printf("Broadcast failed %x\n",err);
+    }
+    free(topic);    
 }
+
+void static mesh_process(char * que)
+{
+    mqttSender_t        mqttMsg;
+    cJSON 	            *elcmd;
+    wifi_config_t       configsta;
+    int                 err; 
+
+
+    char *topic=(char*)malloc(200);
+    char *mensaje=(char *)malloc(1000);
+
+    strcpy(mensaje,que);
+    printf("Procesor message in %s\n",mensaje);
+    elcmd= cJSON_Parse(mensaje);		//plain text to cJSON... must eventually cDelete elcmd
+    if (elcmd)
+    {   // valid json
+        // printf("valid Json %s\n",que);
+        cJSON *command= 		cJSON_GetObjectItem(elcmd,"cmd");
+        if(command)
+            {
+                printf("Find cmd [%s]\n",command->valuestring);
+                int cualf=findInternalCmds(command->valuestring);
+                if(cualf>=0)
+                {
+                    switch (cualf)
+                    {
+                        case 0:// conf cmd. Only on root, but stilll make sure 
+                            printf("Internal Config\n");
+                            if(esp_mesh_is_root())
+                            {
+                                cJSON *tcid= 		cJSON_GetObjectItem(elcmd,"cid");
+                                if(tcid)
+                                {
+                                    sprintf(topic,"%s/%d",configQueue,tcid->valueint);
+                                    
+                                    esp_mqtt_client_publish(clientCloud, topic,que,strlen(que), 1,0);
+                                //send a msg to config topic instead
+                                }
+                                cJSON_Delete(elcmd);
+                                free(mensaje); 
+                                free(topic);
+                                return;
+                            }
+                            break;
+                        case 1:// requiring source ssid and password, respond using a broadcast to all to update ssid/password
+                            printf("Internal STA\n");
+                            if(esp_mesh_is_root())
+                                send_ssid_broadcast();
+
+                            cJSON_Delete(elcmd);
+                            free(mensaje); 
+                            free(topic); 
+                            return;
+                            break;
+                        case 2: // a msg from Root giving the current ssid/pswd
+                            printf("Update SSID\n");
+                            if(!esp_mesh_is_root()) //only non roots 
+                            {
+                                err=esp_wifi_get_config( WIFI_IF_STA,&configsta);      // get station ssid and password
+                                if(!err)
+                                {
+                                    cJSON *ssid= 		cJSON_GetObjectItem(elcmd,"ssid");
+                                    cJSON *pswd= 		cJSON_GetObjectItem(elcmd,"psw");
+                                    if(ssid && pswd)
+                                    {
+                                        memcpy(&configsta.sta.ssid,ssid->valuestring,strlen(ssid->valuestring));
+                                        memcpy(&configsta.sta.password,pswd->valuestring,strlen(pswd->valuestring));
+                                        err=esp_wifi_set_config( WIFI_IF_STA,&configsta);      // save new ssid and password
+                                        if(err)
+                                            printf("Failed to save new ssid %x\n",err);
+                                    }
+                                    else
+                                        printf("Update SSID without ssid or pswd\n");
+                                }
+                                else
+                                {
+                                    printf("Could not get STA config update ssid %x\n", err);       
+                                }
+                            }
+                            cJSON_Delete(elcmd);
+                            free(mensaje); 
+                            free(topic);
+                            return;
+                            break;                            
+                        default:
+                            printf("Internal not found\n");
+                            cJSON_Delete(elcmd);        //do not delete malloc buffer, usede by next logic
+                            break;  //fall thru 
+                    }
+                }
+            }
+    }   //no else, just fall thru 
+
+//used a relay
+    // if (data->data[0] == CMD_ROUTE_TABLE) {
+    //     int size =  data->size - 1;
+    //     if (s_route_table_lock == NULL || size%6 != 0) {
+    //         ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unexpected size");
+    //         return;
+    //     }
+    //     xSemaphoreTake(s_route_table_lock, portMAX_DELAY);
+    //     s_route_table_size = size / 6;
+    //     for (int i=0; i < s_route_table_size; ++i) {
+    //         ESP_LOGI(MESH_TAG, "Received Routing table [%d] "
+    //                 MACSTR, i, MAC2STR(data->data + 6*i + 1));
+    //     }
+    //     memcpy(&s_route_table, data->data + 1, size);
+    //     xSemaphoreGive(s_route_table_lock);
+    // } else if (data->data[0] == CMD_KEYPRESSED) {
+    //     if (data->size != 7) {
+    //         ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unexpected size");
+    //         return;
+    //     }
+    //     ESP_LOGW(MESH_TAG, "Keypressed detected on node: "
+    //             MACSTR, MAC2STR(data->data + 1));
+    // } else {
+    //     ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unknown command");
+    // }
+    // printf("Msg in [%s] from " MACSTR "\n",(char *)data->data, MAC2STR(from->addr));
+    
+    free(topic);    //not used anymore
+    strcpy(mensaje,que);
+    mqttMsg.msg=mensaje;
+    mqttMsg.lenMsg=strlen(mensaje);
+    printf("Sending mqtt mesh  not internal msg [%s]\n",mensaje);
+
+     if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)      //will free mensaje malloc
+        {
+            printf("Error queueing msg\n");
+            if(mqttMsg.msg)
+                free(mqttMsg.msg);  //due to failure
+        }
+    else
+            //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
+        xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send everything now !!!!!
+}
+
 
 void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
 {
     mqttSender_t mqttMsg;
     cJSON 	*elcmd;
+    char topic[200];
+    
+    printf("Mesh Rx\n");
+    char *mensaje=(char *)malloc(1000);
+    if(!mensaje)
+    {
+        printf("Now RAM for mesh msg\n");
+        return;
+    }
+    strcpy(mensaje,(char *)data->data);
 
-    elcmd= cJSON_Parse((char*)data->data);		//plain text to cJSON... must eventually cDelete elcmd
+    elcmd= cJSON_Parse(mensaje);		//plain text to cJSON... must eventually cDelete elcmd
     if (elcmd)
     {   // valid json
         cJSON *command= 		cJSON_GetObjectItem(elcmd,"cmd");
@@ -73,18 +224,39 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
             int cualf=findInternalCmds(command->valuestring);
             switch (cualf)
             {
-            case 0:
-                esp_mqtt_client_publish(clientCloud, configQueue, (char*)data->data,strlen((char*)data->data), 1,0);
-                //send a msg to config topic instead
+            case 0:// conf cmd. Only on root, but stilll make sure 
+                printf("Internal Config\n");
+                if(esp_mesh_is_root())
+                {
+                    cJSON *tcid= 		cJSON_GetObjectItem(elcmd,"cid");
+                    if(tcid)
+                    {
+                        sprintf(topic,"%s/%d",configQueue,tcid->valueint);
+                        esp_mqtt_client_publish(clientCloud, topic, (char*)data->data,strlen((char*)data->data), 1,0);
+                    //send a msg to config topic instead
+                    }
+                }
                 break;
-            case 1:// requireing source ssid and password, respond using a broadcast to all to update ssid/password
-                    
+            case 1:// requiring source ssid and password, respond using a broadcast to all to update ssid/password
+                printf("Internal STA\n");
+                if(esp_mesh_is_root())
+                {
+                    wifi_config_t configsta;
+                    int err=esp_wifi_get_config( WIFI_IF_STA,&configsta);      // get station ssid and password
+                    if(!err)
+                    {
+                        sprintf(topic,"{\"cmd\":\"router\",\"ssid\":%s,\"psw\":%s}",configsta.sta.ssid,configsta.sta.password);
+                        //send a Broadcxast Message toa ll nodes to update SSID/Passwaord
+                    }
+                }
                 break;
             
             default:
+                printf("Internal not found\n");
                 break;
             }
             cJSON_Delete(elcmd);
+            free(mensaje); //really doesnt matter due to reboot but rules are rules
         }
     }
     else
@@ -114,16 +286,11 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
     //     ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unknown command");
     // }
     // printf("Msg in [%s] from " MACSTR "\n",(char *)data->data, MAC2STR(from->addr));
-    char *mensaje=(char *)malloc(1000);
-    if(!mensaje)
-    {
-        printf("Now RAM for mesh msg\n");
-        return;
-    }
     strcpy(mensaje,(char *)data->data);
     mqttMsg.msg=mensaje;
     mqttMsg.lenMsg=strlen(mensaje);
-    // printf("Sending mqtt mesh msg [%s]\n",mensaje);
+    printf("Sending mqtt mesh  not internal msg [%s]\n",mensaje);
+
      if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)
         {
             printf("Error queueing msg\n");
@@ -591,7 +758,8 @@ void esp_mesh_p2p_rx_main(void *arg)
         mqttSender_t mqttMsg;
 
 
-    while (true) {
+    while (true)
+    {
         data.size = 1000;
         aca=0;
         err = esp_mesh_recv(&from, &data, portMAX_DELAY, &flag, NULL, 0);
@@ -610,7 +778,9 @@ void esp_mesh_p2p_rx_main(void *arg)
                         data.tos);
         
 
-         char *mensaje=(char *)malloc(1000);
+    mesh_process((char*)data.data);
+    /*
+    char *mensaje=(char *)malloc(1000);
     if(!mensaje)
     {
         printf("Now RAM for mesh msg\n");
@@ -629,6 +799,8 @@ void esp_mesh_p2p_rx_main(void *arg)
         else
             //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
             xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send everything now !!!!!
+        }
+        */
         }
     }
 }
@@ -843,6 +1015,7 @@ void init_vars()
     MESH_ID[5]=0x7f;
     mqttf=false;
     pid=cid=0;
+    memset(&GroupID.addr ,0xff,6);
 
 //cmd and info queue names
     sprintf(cmdQueue,"meter/%d/%d/%d/%d/%d/cmd",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
@@ -894,6 +1067,7 @@ void init_vars()
 
     int x=0;
     strcpy(internal_cmds[x++],"conf");
+    strcpy(internal_cmds[x++],"sta");
     strcpy(internal_cmds[x++],"router");
 
 
@@ -1004,6 +1178,7 @@ static void pcnt_example_init(pcnt_unit_t unit)
 
 void erase_config()
 {
+    printf("Erase config\n");
     srand(time(NULL));
     wifi_prov_mgr_reset_provisioning();
     esp_wifi_restore();
@@ -1569,6 +1744,7 @@ void meter_configure(bool como)
     mqttSender_t mensaje;
     char topic[40];
 
+    printf("Configure Meters %d\n",theConf.meterconf);
     // printf("Configure Meters...start network passw %d\n",theConf.confpassword);
     wifi_init_network(como);
 
@@ -1703,7 +1879,7 @@ void app_main(void)
     if(!theConf.meshconf)       //never configured
         park_state();           // if not configured at all, choose 
     
-    if(!theConf.meterconf && theConf.meshconf==1 )  // Root node
+    if(theConf.meterconf==0 && theConf.meshconf==1 )  // Root node
     {
         meter_configure(ROOT);      //start the STA for access to Router directly.
                                     // need the Router to send MQTT to HQ with Challenge ID(CID) and Passwiord(PID)
@@ -1724,10 +1900,10 @@ void app_main(void)
     // MESH sequence start
 
     ESP_ERROR_CHECK(esp_netif_init());
-    if(theConf.meshconf==2)             // NRT setup
-        esp_mesh_fix_root(true);        //force him to seek a root node.
 
-    if(theConf.meshconf<2)          // just in case we lost our Router Config chedck if all ok
+
+    // if(theConf.meshconf<2)          // just in case we lost our Router Config chedck if all ok
+    if(false)          // just in case we lost our Router Config chedck if all ok
     {
         printf("trying newconfigure\n");
         ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -1741,7 +1917,8 @@ void app_main(void)
 
     // Now standard Mesh setup preprocess
     esp_netif_dhcpc_stop(esp_sta);                      // per suggestion of internet user
-    ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL));    // Ditto
+    // ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL));    // Ditto
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     /*  crete network interfaces for mesh (only station instance saved for further manipulation, soft AP instance ignored */
     ESP_ERROR_CHECK(mesh_netifs_init(mesh_recv_cb));
@@ -1771,8 +1948,16 @@ void app_main(void)
         strcpy(mipassw,(char*)config.ap.password);
     }
 
+
         /*  mesh initialization */
     ESP_ERROR_CHECK(esp_mesh_init());
+
+
+    // if(theConf.meshconf==2)             // NRT setup
+    //     esp_mesh_fix_root(true);        //force him to seek a root node.
+    // else
+    //     esp_mesh_fix_root(false);
+
     ESP_ERROR_CHECK(esp_event_handler_register(MESH_EVENT, ESP_EVENT_ANY_ID, &mesh_event_handler, NULL));
     ESP_ERROR_CHECK(esp_mesh_set_max_layer(CONFIG_MESH_MAX_LAYER));
     ESP_ERROR_CHECK(esp_mesh_set_vote_percentage(1));
@@ -1794,6 +1979,13 @@ void app_main(void)
     memcpy((uint8_t *) &cfg.mesh_ap.password, "csttpstt",8);            //Only password required
     ESP_ERROR_CHECK(esp_mesh_set_config(&cfg));
     /* mesh start */
+    // Boradcast address setup
+    
+    esp_err_t errReturn = esp_mesh_set_group_id(&GroupID, 1);
+    if(errReturn)
+    {
+        printf("Failed to resgister Mesh Broadcast\n");
+    }
     ESP_ERROR_CHECK(esp_mesh_start());
     ESP_LOGI(MESH_TAG, "mesh starts successfully, heap:%d, %s\n",  esp_get_free_heap_size(),
              esp_mesh_is_root_fixed() ? "root fixed" : "root not fixed");
