@@ -91,7 +91,7 @@ typedef struct config {
     uint16_t    nodeConf;
     uint16_t    loglevel;
     uint8_t     meshconf,meterconf,bootflag,meshid,subnode;
-    uint32_t    meshconfdate,meterconfdate,confpassword;
+    uint32_t    meshconfdate,meterconfdate,confpassword,cid;
     char        mqttServer[100];
     char        mqttUser[50];
     char        mqttPass[50];

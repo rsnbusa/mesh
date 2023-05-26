@@ -61,7 +61,9 @@ void send_ssid_broadcast()
     free(topic);    
 }
 
-void static mesh_process(char * que)
+void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
+
+// void static mesh_process(char * que)
 {
     mqttSender_t        mqttMsg;
     cJSON 	            *elcmd;
@@ -69,10 +71,9 @@ void static mesh_process(char * que)
     int                 err; 
 
 
-    char *topic=(char*)malloc(200);
     char *mensaje=(char *)malloc(1000);
 
-    strcpy(mensaje,que);
+    strcpy(mensaje,(char*)data->data);
     printf("Procesor message in %s\n",mensaje);
     elcmd= cJSON_Parse(mensaje);		//plain text to cJSON... must eventually cDelete elcmd
     if (elcmd)
@@ -94,14 +95,20 @@ void static mesh_process(char * que)
                                 cJSON *tcid= 		cJSON_GetObjectItem(elcmd,"cid");
                                 if(tcid)
                                 {
-                                    sprintf(topic,"%s/%d",configQueue,tcid->valueint);
-                                    
-                                    esp_mqtt_client_publish(clientCloud, topic,que,strlen(que), 1,0);
-                                //send a msg to config topic instead
+                                    sprintf(topic,"%s%d",configQueue,tcid->valueint);
+                                    mqttMsg.queue=topic;
+                                    mqttMsg.msg=mensaje;
+                                    mqttMsg.lenMsg=strlen(mensaje);
+                                    if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)
+                                    {
+                                        printf("Error queueing msg\n");
+                                        if(mqttMsg.msg)
+                                            free(mqttMsg.msg);  //due to failure
+                                    };
+                                    xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send 
+                                    // esp_mqtt_client_publish(clientCloud, topic,que,strlen(que), 1,0);
                                 }
                                 cJSON_Delete(elcmd);
-                                free(mensaje); 
-                                free(topic);
                                 return;
                             }
                             break;
@@ -112,7 +119,6 @@ void static mesh_process(char * que)
 
                             cJSON_Delete(elcmd);
                             free(mensaje); 
-                            free(topic); 
                             return;
                             break;
                         case 2: // a msg from Root giving the current ssid/pswd
@@ -142,7 +148,6 @@ void static mesh_process(char * que)
                             }
                             cJSON_Delete(elcmd);
                             free(mensaje); 
-                            free(topic);
                             return;
                             break;                            
                         default:
@@ -181,8 +186,8 @@ void static mesh_process(char * que)
     // }
     // printf("Msg in [%s] from " MACSTR "\n",(char *)data->data, MAC2STR(from->addr));
     
-    free(topic);    //not used anymore
-    strcpy(mensaje,que);
+    strcpy(mensaje,(char*)data->data);
+    mqttMsg.queue=infoQueue;
     mqttMsg.msg=mensaje;
     mqttMsg.lenMsg=strlen(mensaje);
     printf("Sending mqtt mesh  not internal msg [%s]\n",mensaje);
@@ -199,7 +204,7 @@ void static mesh_process(char * que)
 }
 
 
-void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
+void static sssmesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
 {
     mqttSender_t mqttMsg;
     cJSON 	*elcmd;
@@ -661,6 +666,7 @@ void send_cid_pid_mesh()
     cid= (esp_random() % 999999);
     pid= (esp_random() % 999999);
     theConf.confpassword=pid;
+    theConf.cid=cid;
     if(mensa)
     {
         sprintf(mensa,"{\"cmd\":\"conf\",\"cid\":%d,\"psw\":%d}",cid,pid);
@@ -778,7 +784,7 @@ void esp_mesh_p2p_rx_main(void *arg)
                         data.tos);
         
 
-    mesh_process((char*)data.data);
+    // mesh_process((char*)data.data);
     /*
     char *mensaje=(char *)malloc(1000);
     if(!mensaje)
@@ -860,9 +866,7 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
                  no_parent->scan_times);
 
     }
-    /* TODO handler for the failure */
-    break;
-    case MESH_EVENT_PARENT_CONNECTED: {
+    /* TODO handler for the failure */    case MESH_EVENT_PARENT_CONNECTED: {
         mesh_event_connected_t *connected = (mesh_event_connected_t *)event_data;
         esp_mesh_get_id(&id);
         mesh_layer = connected->self_layer;
@@ -1225,27 +1229,30 @@ void mqtt_sender(void *pArg)        // MQTTT data sender task
             {
                 if(mensaje.msg)
                 {
+                    printf("Cola %s\n",mensaje.queue);
                     xEventGroupClearBits(wifi_event_group, PUB_BIT);	// clear bit to wait on
-                    esp_mqtt_client_publish(clientCloud, infoQueue, (char*)mensaje.msg,strlen((char*)mensaje.msg), 1,0);
+                    esp_mqtt_client_publish(clientCloud,(char*) mensaje.queue, (char*)mensaje.msg,strlen((char*)mensaje.msg), 1,0);
                     // get confirmation of msg being published
                     xEventGroupWaitBits(wifi_event_group, PUB_BIT, false, true,  portMAX_DELAY/ portTICK_RATE_MS);
                     endtest=xmillis();
                     printf("Mqtt time %dms\n",endtest-starttest);
                     starttest=xmillis();
                     free(mensaje.msg);
-
+                    printf("done free\n");
                 }               
             }
-            else
+            else        // queue empty, now close
             {
                 err=esp_mqtt_client_stop(clientCloud);
                 if(err)
                     printf("Error stoping mqtt %x\n",err);
                 else
                     printf("mqtt session closed\n");
+                
                 break;
             }
         }
+        printf("mqtt sender wait again\n");
     }
 }
 
@@ -1260,6 +1267,7 @@ void mqtt_sender(void *pArg)        // MQTTT data sender task
     time(&now);
 
     localtime_r(&now, &timeinfo);
+    mensaje.queue=infoQueue;
     mensaje.msg=sendData(false);            //will be freed by sender
     if(mensaje.msg)
         mensaje.lenMsg=strlen(mensaje.msg);
@@ -1297,6 +1305,7 @@ void mqtt_sender(void *pArg)        // MQTTT data sender task
     time(&now);
 
     localtime_r(&now, &timeinfo);
+    mensaje.queue=infoQueue;
     mensaje.msg=sendData(true);            //will be freed by sender, Force sending first caller to allow incoming messages
     if(mensaje.msg)
     {
@@ -1745,6 +1754,7 @@ void meter_configure(bool como)
     char topic[40];
 
     printf("Configure Meters %d\n",theConf.meterconf);
+
     // printf("Configure Meters...start network passw %d\n",theConf.confpassword);
     wifi_init_network(como);
 
@@ -1761,6 +1771,8 @@ void meter_configure(bool como)
                 char tmp[12];
                 sprintf(tmp,"%d",cid);
                 printf("Node %s\n",tmp);
+                theConf.cid=cid;
+                write_to_flash();
                 if(xSemaphoreTake(I2CSem, portMAX_DELAY/  portTICK_RATE_MS))		
                 {  
                     u8g2_ClearBuffer(&u8g2);
@@ -1787,6 +1799,16 @@ void meter_configure(bool como)
         printf("Send NON ROOT Challenge\n");
         //send a mesh message to Root to send a mqtt message to Host
     }
+        #ifdef DISPLAY
+    if(xSemaphoreTake(I2CSem, portMAX_DELAY/  portTICK_RATE_MS))		
+    {  
+        u8g2_ClearBuffer(&u8g2);
+        sprintf(topic,"%d",theConf.cid);
+        ssdString(10,38,topic,true);
+        xSemaphoreGive(I2CSem);
+    }
+
+#endif
     while(true)
     {
         delay(1000);        // Webserver will restart after configuration or timeout
@@ -1823,6 +1845,68 @@ void check_ota()
     }
 }
 
+void main_app(void *pArg)   
+{
+    uint32_t ahora=0,dif=0;
+    time_t now;
+    pcnt_evt_t evt;
+    portBASE_TYPE res;
+    while (true) {      //wait for an event which will be when a High Limit is fired, equivalent to BPK/100
+        res = xQueueReceive(pcnt_evt_queue, &evt, portMAX_DELAY / portTICK_PERIOD_MS);
+        if (res == pdTRUE) {
+            if (evt.status & PCNT_EVT_H_LIM) 
+            {
+                ahora=xmillis();
+                dif=ahora-medidor[evt.unit].lastclock;
+                medidor[evt.unit].lastclock=ahora;
+                medidor[evt.unit].beat++;
+                medidor[evt.unit].beatlife++;
+                if(dif>0)
+                {
+                    amps[evt.unit]=4500.0/dif*AMPSHORA;
+                    if(amps[evt.unit]>medidor[evt.unit].maxamp)
+                        medidor[evt.unit].maxamp=amps[evt.unit];
+                    if(amps[evt.unit]<medidor[evt.unit].minamp)
+                        medidor[evt.unit].minamp=amps[evt.unit];
+                }
+                // printf("Save [%d] van %d dif %d max %.02f min %.02f\n",evt.unit, medidor[evt.unit].beat,dif, medidor[evt.unit].maxamp, medidor[evt.unit].minamp);
+                if( medidor[evt.unit].beat>=medidor[evt.unit].bpk)
+                {
+                    time(&now);
+                    localtime_r(&now, &timeinfo);
+                    char *buf=(char*)malloc(300);
+                    if (buf)
+                    {
+                        bzero(buf,300);
+                        strftime(buf, 300, "%c", &timeinfo);
+                        dia=timeinfo.tm_yday;
+                        mes=timeinfo.tm_mon;
+                        // printf("Write kwh date %s mes %d day %d\n",buf,mes,dia);
+                        free(buf);
+                    }
+                    time(&now);
+                    medidor[evt.unit].lifekwh++;
+                    medidor[evt.unit].months[mes]++;
+                    medidor[evt.unit].days[dia]++;
+                    medidor[evt.unit].lastupdate=now;
+                    medidor[evt.unit].beat=0;
+                    fram.write_meter(evt.unit,(uint8_t*)&medidor[evt.unit],sizeof(meterType));
+                    fram.write_guard((uint32_t)now);    //last known date in seconds
+                }
+                else
+                {   
+                    suma[evt.unit]++;
+                    if( suma[evt.unit]> medidor[evt.unit].bpk/100)
+                    {
+                        fram.write_beat(evt.unit, medidor[evt.unit].beat);
+                        fram.write_beatlife(evt.unit, medidor[evt.unit].beatlife);
+                       suma[evt.unit]=0;
+                    }
+                }
+            }
+        } 
+    } 
+}
 
 void app_main(void)
 {
@@ -1890,7 +1974,7 @@ void app_main(void)
     if(theConf.meterconf==4)
     {
         printf("Non Root configure meters\n");
-        theConf.meterconf=2;        //back to original setup as NRT
+        // theConf.meterconf=2;        //back to original setup as NRT
         write_to_flash();           
         meter_configure(NRT);       //will restart
     }
@@ -1915,13 +1999,10 @@ void app_main(void)
         esp_netif_destroy_default_wifi(esp_sta);        //specialy this one
     }
 
-    // Now standard Mesh setup preprocess
-    esp_netif_dhcpc_stop(esp_sta);                      // per suggestion of internet user
-    // ESP_ERROR_CHECK(esp_event_loop_init(NULL,NULL));    // Ditto
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-
     /*  crete network interfaces for mesh (only station instance saved for further manipulation, soft AP instance ignored */
     ESP_ERROR_CHECK(mesh_netifs_init(mesh_recv_cb));
+
     wifi_init_config_t configg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&configg));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_handler, NULL));
@@ -1929,49 +2010,33 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    wifi_config_t config;
-    esp_wifi_get_config( WIFI_IF_STA,&config);      //get saved SSID and password from STA, our router
-    // printf("SSID %s password %s\n",config.ap.ssid,config.ap.password);
+    // wifi_config_t config;
+    // esp_wifi_get_config( WIFI_IF_STA,&config);      //get saved SSID and password from STA, our router
+    // // printf("SSID %s password %s\n",config.ap.ssid,config.ap.password);
 
-// test this I dont think its needed anymore, except password
     char missid[30],mipassw[10];
 
-    if(strlen((char*)config.ap.ssid)==0)
-    {
-            //dummy Router required for even NRT nodes...weird
-        strcpy(missid,"NADA");
-        strcpy(mipassw,"csttpstt");
-    }
-    else    // use STA credentials, should not work for a NRT since never propvisioned but....
-    {
-        strcpy(missid,(char*)config.ap.ssid);
-        strcpy(mipassw,(char*)config.ap.password);
-    }
-
+    strcpy(missid,"Porton");
+    strcpy(mipassw,"csttpstt");
 
         /*  mesh initialization */
     ESP_ERROR_CHECK(esp_mesh_init());
-
-
-    // if(theConf.meshconf==2)             // NRT setup
-    //     esp_mesh_fix_root(true);        //force him to seek a root node.
-    // else
-    //     esp_mesh_fix_root(false);
-
     ESP_ERROR_CHECK(esp_event_handler_register(MESH_EVENT, ESP_EVENT_ANY_ID, &mesh_event_handler, NULL));
     ESP_ERROR_CHECK(esp_mesh_set_max_layer(CONFIG_MESH_MAX_LAYER));
     ESP_ERROR_CHECK(esp_mesh_set_vote_percentage(1));
     ESP_ERROR_CHECK(esp_mesh_set_ap_assoc_expire(10));
+    ESP_ERROR_CHECK(esp_mesh_set_root_healing_delay(20000)); //set healing dealy time to 20s
+
     mesh_cfg_t cfg = MESH_INIT_CONFIG_DEFAULT();
     memcpy((uint8_t *) &cfg.mesh_id, MESH_ID, 6);       //was setup in init_vars
     cfg.channel = CONFIG_MESH_CHANNEL;
     
-    //Router credentials
+    //Router credentials STA
     cfg.router.ssid_len =strlen( missid);
     memcpy((uint8_t *) &cfg.router.ssid, missid, cfg.router.ssid_len);
     memcpy((uint8_t *) &cfg.router.password, mipassw,strlen(mipassw));
    
-   // AP credientials
+   // softAP credientials
     printf("cfg ssid %s password %s\n",cfg.router.ssid,cfg.router.password);
     ESP_ERROR_CHECK(esp_mesh_set_ap_authmode((wifi_auth_mode_t)CONFIG_MESH_AP_AUTHMODE));
     cfg.mesh_ap.max_connection = CONFIG_MESH_AP_CONNECTIONS;
@@ -1990,83 +2055,12 @@ void app_main(void)
     ESP_LOGI(MESH_TAG, "mesh starts successfully, heap:%d, %s\n",  esp_get_free_heap_size(),
              esp_mesh_is_root_fixed() ? "root fixed" : "root not fixed");
 
-     xTaskCreate(&esp_mesh_p2p_rx_main,"mesh",10240,NULL, 10, NULL); 	        // here we get messages from Mesh
-
-// If Non Root check if need to configure Meters (needed the Mesh to send password challenge)
-// if(!theConf.meterconf && theConf.meshconf==2)
-// {
-//     printf("Send mesh for meter conf\n");
-//     // need to send a mesh msg to HQ for CID and PID
-//     // at this point we are in a mesh
-//     send_cid_pid_mesh();
-//     theConf.meterconf=4;     // in order to reboot and configure 
-//     write_to_flash();
-//     delay(3000);
-//     esp_restart();
-//     // //start meter config without connecting to AP via Mesh itself
-//     // meter_configure(NRT); //we are NOT root
-// }
+    //  xTaskCreate(&esp_mesh_p2p_rx_main,"mesh",10240,NULL, 10, NULL); 	        // here we get messages from Mesh
 
 // FINALLY what we are herre for, counting beats from the meters
 // using PCNT as worker, but could be directly INTs, next version. Increases numeber of Meters, PCNBT only 8
 
-    uint32_t ahora=0,dif=0;
-    time_t now;
-    pcnt_evt_t evt;
-    portBASE_TYPE res;
-    while (true) {      //wait for an event which will be when a High Limit is fired, equivalent to BPK/100
-        res = xQueueReceive(pcnt_evt_queue, &evt, portMAX_DELAY / portTICK_PERIOD_MS);
-        if (res == pdTRUE) {
-            if (evt.status & PCNT_EVT_H_LIM) 
-            {
-                ahora=xmillis();
-                dif=ahora-medidor[evt.unit].lastclock;
-                medidor[evt.unit].lastclock=ahora;
-                medidor[evt.unit].beat++;
-                medidor[evt.unit].beatlife++;
-                if(dif>0)
-                {
-                    amps[evt.unit]=4500.0/dif*AMPSHORA;
-                    if(amps[evt.unit]>medidor[evt.unit].maxamp)
-                        medidor[evt.unit].maxamp=amps[evt.unit];
-                    if(amps[evt.unit]<medidor[evt.unit].minamp)
-                        medidor[evt.unit].minamp=amps[evt.unit];
-                }
-                // printf("Save [%d] van %d dif %d max %.02f min %.02f\n",evt.unit, medidor[evt.unit].beat,dif, medidor[evt.unit].maxamp, medidor[evt.unit].minamp);
-                if( medidor[evt.unit].beat>=medidor[evt.unit].bpk)
-                {
-                    time(&now);
-                    localtime_r(&now, &timeinfo);
-                    char *buf=(char*)malloc(300);
-                    if (buf)
-                    {
-                        bzero(buf,300);
-                        strftime(buf, 300, "%c", &timeinfo);
-                        dia=timeinfo.tm_yday;
-                        mes=timeinfo.tm_mon;
-                        // printf("Write kwh date %s mes %d day %d\n",buf,mes,dia);
-                        free(buf);
-                    }
-                    time(&now);
-                    medidor[evt.unit].lifekwh++;
-                    medidor[evt.unit].months[mes]++;
-                    medidor[evt.unit].days[dia]++;
-                    medidor[evt.unit].lastupdate=now;
-                    medidor[evt.unit].beat=0;
-                    fram.write_meter(evt.unit,(uint8_t*)&medidor[evt.unit],sizeof(meterType));
-                    fram.write_guard((uint32_t)now);    //last known date in seconds
-                }
-                else
-                {   
-                    suma[evt.unit]++;
-                    if( suma[evt.unit]> medidor[evt.unit].bpk/100)
-                    {
-                        fram.write_beat(evt.unit, medidor[evt.unit].beat);
-                        fram.write_beatlife(evt.unit, medidor[evt.unit].beatlife);
-                       suma[evt.unit]=0;
-                    }
-                }
-            }
-        } 
-    } 
+    xTaskCreate(&main_app,"pcnt",10240,NULL, 10, NULL); 	        // here we get messages from Mesh
+
+    
 }

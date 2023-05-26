@@ -528,6 +528,8 @@ int cmdResetConf(int argc, char **argv)
   mqttSender_t mensaje;
   char *mqttmsg;
   mesh_data_t data;
+  wifi_config_t       configsta;
+  int err;
 
     int nerrors = arg_parse(argc, argv, (void **)&resetlevel);
     if (nerrors != 0) {
@@ -550,6 +552,25 @@ int cmdResetConf(int argc, char **argv)
         case 2:
           theConf.meshconf=0;
           break;
+        case 3:
+          err=esp_wifi_get_config( WIFI_IF_STA,&configsta);      // get station ssid and password
+          if(!err)
+          {
+            memcpy(&configsta.sta.ssid,(char*)"Porton\0",7);
+            memcpy(&configsta.sta.password,(char*)"csttpstt\0",9);
+            err=esp_wifi_set_config( WIFI_IF_STA,&configsta);      // save new ssid and password
+            if(err)
+                printf("Failed to save new ssid %x\n",err);
+            else
+              {
+                theConf.meshconf=1;
+                write_to_flash();
+                printf("Sta saved\n");
+              }
+          }
+          else 
+            printf("Error getting STA config %x\n",err);
+            break;
         default:
           printf("Wrong choice of reset\n");
       }
@@ -586,10 +607,10 @@ void kbd(void *pArg)
   framArg.end =                   arg_end(16);
 
 
-  loglevel.level=                 arg_int0(NULL, "level", "0-5(None-Error-Warn-Info-Debug-Verbose)", "Log Level");
+  loglevel.level=                 arg_int0(NULL, "l", "0-5(None-Error-Warn-Info-Debug-Verbose)", "Log Level");
   loglevel.end=                   arg_end(1);
 
-  resetlevel.cflags=                 arg_int0(NULL, "flag", "0-2(0=All 1=Configuration 2=Mesh)", "Reset Flags");
+  resetlevel.cflags=                 arg_int0(NULL, "f", "0-2(0=All 1=Configuration 2=Mesh)", "Reset Flags");
   resetlevel.end=                   arg_end(1);
 
     const esp_console_cmd_t fram_cmd = {
@@ -665,7 +686,7 @@ void kbd(void *pArg)
     };
 
     const esp_console_cmd_t resetconf_cmd = {
-        .command = "resetConf",
+        .command = "resetconf",
         .help = "Reset Conf flags",
         .hint = NULL,
         .func = &cmdResetConf,

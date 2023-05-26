@@ -54,7 +54,7 @@ EXTERN mesh_addr_t                  mesh_parent_addr;
 EXTERN esp_ip4_addr_t               s_current_ip;       
 EXTERN httpd_handle_t 				wserver;
 EXTERN wstate_t						webState;
-EXTERN char                         gwStr[20],*tempb;
+EXTERN char                         gwStr[20],*tempb,topic[100];
 EXTERN mesh_addr_t                  GroupID; 
 
 #endif
