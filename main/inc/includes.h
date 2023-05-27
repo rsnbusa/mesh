@@ -55,6 +55,8 @@ extern "C"{
 #include "esp_http_server.h"
 #include "esp_https_server.h"
 
+#include "aes_alt.h"			//hw acceleration
+
 void app_main();
 }
 

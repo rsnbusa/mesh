@@ -28,6 +28,12 @@ typedef struct logl{
     struct arg_end *end;
 } loglevel_t;
 
+typedef struct aes_en_ec{
+    struct arg_str *mode;        
+    struct arg_int *key;        
+    struct arg_end *end;
+} aes_en_dec_t;
+
 typedef struct resetconf{
     struct arg_int *cflags;        
     struct arg_end *end;

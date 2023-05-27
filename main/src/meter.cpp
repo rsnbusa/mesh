@@ -10,6 +10,68 @@
 void mqtt_sender(void *pArg);
 static void    mqtt_app_start();
 
+
+int aes_encrypt(const char* src, size_t son, char *dst,const char *cualKey)
+{
+
+#ifdef DEBUGX
+	if(!theConf.crypt)
+	{
+		memcpy(dst,src,son);
+		return son;
+	}
+#endif
+
+	bzero(iv,sizeof(iv));
+	int theSize=son;
+	int rem= theSize % 16;
+	theSize+=16-rem;			//round to next 16 for AES
+
+	char *donde=(char*)malloc(theSize);
+	if (!donde)
+	{
+		printf("AES Encrypt No memory copy message\n");
+		return ESP_FAIL;
+	}
+	bzero(donde,theSize);
+	memcpy(donde,src,son);	//zero padded
+
+	if(esp_aes_setkey( &ctx, (const unsigned char*)cualKey, 256 )!=0)
+		printf("Could not set key encrypt\n");
+	else
+		if(esp_aes_crypt_cbc( &ctx, ESP_AES_ENCRYPT, theSize, (unsigned char*)iv, (const unsigned char*)donde, ( unsigned char*)dst )!=0)
+			printf("Could not encrypt\n");
+
+	FREEANDNULL(donde)
+
+	#ifdef HEAPSAMPLE
+			 heapSample((char*)"EncryptEnd");
+#endif
+	return theSize;
+}
+
+int aes_decrypt(const char* src, size_t son, char *dst,const unsigned char *cualKey)
+{
+
+	bzero(dst,son);
+	bzero(iv,sizeof(iv));
+	if(esp_aes_setkey( &ctx, (const unsigned char*)cualKey, 256 )!=0)
+	{
+		printf("Could not set key decrypt\n");
+		return ESP_FAIL;
+	}
+	else
+	{
+		if(esp_aes_crypt_cbc( &ctx, ESP_AES_DECRYPT, son,(unsigned char*) iv, ( const unsigned char*)src, (unsigned char*)dst )!=0)
+		{
+			printf("Could not decrypt\n");
+			return ESP_FAIL;
+		}
+	}
+	return son;
+}
+
+
 void delay(uint32_t cuanto)
 {
     vTaskDelay(cuanto / portTICK_PERIOD_MS);
@@ -2019,6 +2081,15 @@ void app_main(void)
     strcpy(missid,"Porton");
     strcpy(mipassw,"csttpstt");
 
+        	    wifi_config_t       configsta;
+
+  err=esp_wifi_get_config( WIFI_IF_STA,&configsta);  
+  printf("Sta %s Pasw %d\n",configsta.sta.ssid,configsta.sta.password);
+  if(strlen((char*)(char*)configsta.sta.password)>7)
+  {
+    strcpy(missid,(char*)configsta.sta.ssid);
+    strcpy(mipassw,(char*)configsta.sta.password);
+  }
         /*  mesh initialization */
     ESP_ERROR_CHECK(esp_mesh_init());
     ESP_ERROR_CHECK(esp_event_handler_register(MESH_EVENT, ESP_EVENT_ANY_ID, &mesh_event_handler, NULL));
@@ -2042,7 +2113,17 @@ void app_main(void)
     cfg.mesh_ap.max_connection = CONFIG_MESH_AP_CONNECTIONS;
     cfg.mesh_ap.nonmesh_max_connection = CONFIG_MESH_NON_MESH_AP_CONNECTIONS;
     memcpy((uint8_t *) &cfg.mesh_ap.password, "csttpstt",8);            //Only password required
-    ESP_ERROR_CHECK(esp_mesh_set_config(&cfg));
+   err=esp_mesh_set_config(&cfg);
+   if (err)
+   {
+    printf("Init Mesh err %x\n");
+    if(err==0x4008)
+    {
+        printf("pasword len error\n");
+        erase_config();
+        esp_restart();
+    }
+   }
     /* mesh start */
     // Boradcast address setup
     

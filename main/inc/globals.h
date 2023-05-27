@@ -17,6 +17,7 @@ const static int SNTP_BIT 				= BIT4;
 const static int SENDMQTT_BIT			= BIT5;
 const static int SENDH_BIT 				= BIT6;
 
+EXTERN esp_aes_context		        ctx ;
 EXTERN pcnt_config_t                pcnt_config[8];
 EXTERN uint8_t                      ssignal[8],dia,mes,displayMode,suma[MAXDEVSS],s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE*6+1],MESH_ID[6];
 EXTERN int16_t                      theGuard,lastFont,lastalign,oldcual,timeSlotStart,timeSlotEnd,sentMqtt;
@@ -49,12 +50,13 @@ EXTERN mesh_addr_t                  s_route_table[CONFIG_MESH_ROUTE_TABLE_SIZE];
 EXTERN int                          s_route_table_size;
 EXTERN loglevel_t                   loglevel;
 EXTERN resetconf_t                  resetlevel;
+EXTERN aes_en_dec_t                 endec;
 EXTERN esp_netif_t*                 esp_sta; 
 EXTERN mesh_addr_t                  mesh_parent_addr;    
 EXTERN esp_ip4_addr_t               s_current_ip;       
 EXTERN httpd_handle_t 				wserver;
 EXTERN wstate_t						webState;
-EXTERN char                         gwStr[20],*tempb,topic[100];
+EXTERN char                         gwStr[20],*tempb,topic[100],iv[16],key[32];
 EXTERN mesh_addr_t                  GroupID; 
 
 #endif

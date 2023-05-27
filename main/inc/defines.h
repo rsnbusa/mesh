@@ -31,3 +31,4 @@
 #define MINB                            2000
 #define MAXB                            4000
 #define MAXINTCMDS                      5
+#define SUPERSECRET                     "mi mama me mima mucho"

@@ -11,6 +11,8 @@
 // #include "typedef.h"
 #include "globals.h"
 
+extern int aes_encrypt(const char* src, size_t son, char *dst,const char *cualKey);
+
 static esp_err_t conn_base(httpd_req_t *req);
 static esp_err_t configure(httpd_req_t *req);
 
@@ -156,9 +158,80 @@ void getSetParameterFloat(char *buf,char * cual, float llimit,float hlimit,float
 	*donde=valor;
 }
 
+int save_sta_pass(char *sta,char * psw)
+{
+	    wifi_config_t       configsta,configsta2;
+		int err; 
+
+	    err=esp_wifi_get_config( WIFI_IF_STA,&configsta);      // get station ssid and password
+		if(!err)
+		{
+			  printf("Configure Sta %s Pasw %d\n",configsta.sta.ssid,configsta.sta.password);
+
+				ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+				bzero(&configsta.sta.ssid,sizeof(configsta.sta.ssid));
+				bzero(&configsta.sta.password,sizeof(configsta.sta.password));
+				memcpy(&configsta.sta.ssid,sta,strlen(sta));
+				memcpy(&configsta.sta.password,psw,strlen(psw));
+				err=esp_wifi_set_config( WIFI_IF_STA,&configsta);      // save new ssid and password
+				if(err)
+				{
+					printf("Failed to save new ssid %x\n",err);
+					return ESP_FAIL;
+				}
+					    err=esp_wifi_get_config( WIFI_IF_STA,&configsta2);      // get station ssid and password
+							  printf("Post Configure Sta %s Pasw %d\n",configsta2.sta.ssid,configsta2.sta.password);
+
+
+		}
+		else
+		{
+			printf("Could not get STA config update ssid %x\n", err);       
+			return ESP_FAIL;
+		}
+		return ESP_OK;
+}
+
+bool check_key(int key)
+{
+	char kkey[17],laclave[33];
+	int challenge;
+	uint8_t *porg,*pdest;
+
+	porg=(uint8_t*)&key;
+	pdest=(uint8_t*)&challenge;
+	pdest+=3;
+
+	for (int a=0;a<4;a++)
+	{
+		*pdest=*porg;
+		pdest--;
+		porg++;
+	}
+
+	sprintf(kkey,"%016d",theConf.cid);
+	printf("num [%s]\n",kkey);
+	sprintf(laclave,"%s%s",kkey,kkey);
+	printf("clave [%s] %d\n",laclave,strlen(laclave));
+	char *aca=(char*)malloc (1000);
+
+	aes_encrypt(SUPERSECRET,sizeof(SUPERSECRET),aca,laclave);
+	ESP_LOG_BUFFER_HEX(MESH_TAG,aca,strlen(SUPERSECRET));
+	ESP_LOG_BUFFER_HEX(MESH_TAG,&challenge,4);
+
+int como=memcmp((void*)aca,(void*)&challenge,4);
+printf("Como %d\n",como);
+	free(aca);
+	if(como==0)
+		return true;
+
+	return false;
+
+}
+
 static esp_err_t configure(httpd_req_t *req)
 {
-	char temp[10],param[40],laclave[10];
+	char temp[10],param[40],laclave[10],elmesh[20],meshpsw[10];
 	int desde=0,hasta,buf_len;
 	char *buf=NULL;
 	char *answer;
@@ -179,12 +252,32 @@ printf("Configuration\n");
 					uint32_t keyread=atoi(laclave);
 					printf("Key %d %d\n",keyread,theConf.confpassword);
 
-					if(keyread!=theConf.confpassword)
+					if(!check_key(keyread))
+					// if(keyread!=theConf.confpassword)
 					{
 						printf("Not same key %d %d\n",keyread,theConf.confpassword);
 						sendnak(req);
 						return ESP_OK;
 					}
+					if(getParam(buf,(char*)"meshsta",param))
+					{
+						strcpy(elmesh,param);
+						if(strlen(elmesh)>0)
+						{
+							if(getParam(buf,(char*)"meshpsw",param))
+							{
+								strcpy(meshpsw,param);
+								if(strlen(meshpsw)>7)	//minimum 8 chars for wp2
+								{
+									if(save_sta_pass(elmesh,meshpsw)==ESP_OK)
+										printf("Web Station/Password Updated\n");
+									else 
+										printf("Failed Update Sta/Password\n");
+								}
+							}
+						}
+					}
+
 					errores=false;
 					theConf.confpassword=0;			//reset password, ONE USE only
 					write_to_flash();
