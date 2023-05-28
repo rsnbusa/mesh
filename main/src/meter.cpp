@@ -248,113 +248,6 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
         xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send everything now !!!!!
 }
 
-
-void static sssmesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
-{
-    mqttSender_t mqttMsg;
-    cJSON 	*elcmd;
-    char topic[200];
-    
-    printf("Mesh Rx\n");
-    char *mensaje=(char *)malloc(1000);
-    if(!mensaje)
-    {
-        printf("Now RAM for mesh msg\n");
-        return;
-    }
-    strcpy(mensaje,(char *)data->data);
-
-    elcmd= cJSON_Parse(mensaje);		//plain text to cJSON... must eventually cDelete elcmd
-    if (elcmd)
-    {   // valid json
-        cJSON *command= 		cJSON_GetObjectItem(elcmd,"cmd");
-        if(command)
-        {
-            //its an internal             elcmd= cJSON_Parse((char*)mqttHandle.message);		//plain text to cJSON... must eventually cDelete elcmd
-            int cualf=findInternalCmds(command->valuestring);
-            switch (cualf)
-            {
-            case 0:// conf cmd. Only on root, but stilll make sure 
-                printf("Internal Config\n");
-                if(esp_mesh_is_root())
-                {
-                    cJSON *tcid= 		cJSON_GetObjectItem(elcmd,"cid");
-                    if(tcid)
-                    {
-                        sprintf(topic,"%s/%d",configQueue,tcid->valueint);
-                        esp_mqtt_client_publish(clientCloud, topic, (char*)data->data,strlen((char*)data->data), 1,0);
-                    //send a msg to config topic instead
-                    }
-                }
-                break;
-            case 1:// requiring source ssid and password, respond using a broadcast to all to update ssid/password
-                printf("Internal STA\n");
-                if(esp_mesh_is_root())
-                {
-                    wifi_config_t configsta;
-                    int err=esp_wifi_get_config( WIFI_IF_STA,&configsta);      // get station ssid and password
-                    if(!err)
-                    {
-                        sprintf(topic,"{\"cmd\":\"router\",\"ssid\":%s,\"psw\":%s}",configsta.sta.ssid,configsta.sta.password);
-                        //send a Broadcxast Message toa ll nodes to update SSID/Passwaord
-                    }
-                }
-                break;
-            
-            default:
-                printf("Internal not found\n");
-                break;
-            }
-            cJSON_Delete(elcmd);
-            free(mensaje); //really doesnt matter due to reboot but rules are rules
-        }
-    }
-    else
-    { //used a relay
-    // if (data->data[0] == CMD_ROUTE_TABLE) {
-    //     int size =  data->size - 1;
-    //     if (s_route_table_lock == NULL || size%6 != 0) {
-    //         ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unexpected size");
-    //         return;
-    //     }
-    //     xSemaphoreTake(s_route_table_lock, portMAX_DELAY);
-    //     s_route_table_size = size / 6;
-    //     for (int i=0; i < s_route_table_size; ++i) {
-    //         ESP_LOGI(MESH_TAG, "Received Routing table [%d] "
-    //                 MACSTR, i, MAC2STR(data->data + 6*i + 1));
-    //     }
-    //     memcpy(&s_route_table, data->data + 1, size);
-    //     xSemaphoreGive(s_route_table_lock);
-    // } else if (data->data[0] == CMD_KEYPRESSED) {
-    //     if (data->size != 7) {
-    //         ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unexpected size");
-    //         return;
-    //     }
-    //     ESP_LOGW(MESH_TAG, "Keypressed detected on node: "
-    //             MACSTR, MAC2STR(data->data + 1));
-    // } else {
-    //     ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unknown command");
-    // }
-    // printf("Msg in [%s] from " MACSTR "\n",(char *)data->data, MAC2STR(from->addr));
-    strcpy(mensaje,(char *)data->data);
-    mqttMsg.msg=mensaje;
-    mqttMsg.lenMsg=strlen(mensaje);
-    printf("Sending mqtt mesh  not internal msg [%s]\n",mensaje);
-
-     if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)
-        {
-            printf("Error queueing msg\n");
-            if(mqttMsg.msg)
-                free(mqttMsg.msg);  //due to failure
-        }
-        else
-            //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
-            xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send everything now !!!!!
-    }
-
-}
-
-
 static void read_flash()
 {
 	esp_err_t q ;
@@ -700,33 +593,6 @@ void mqttMgr(void *pArg)
     }
 }
 
-void send_cid_pid_mesh()
-{
-    char *mensa;
-    mesh_data_t data;
-
-
-    mensa=(char*)malloc(200);
-    int cid,pid;
-    cid= (esp_random() % 999999);
-    pid= (esp_random() % 999999);
-    theConf.confpassword=pid;
-    theConf.cid=cid;
-    if(mensa)
-    {
-        sprintf(mensa,"{\"cmd\":\"conf\",\"cid\":%d,\"psw\":%d}",cid,pid);
-        data.proto = MESH_PROTO_BIN;
-        data.tos = MESH_TOS_P2P;
-        data.data=(uint8_t*)mensa;
-        data.size=strlen(mensa)+1;
-        printf("Sending Root [%s]...",(char*)data.data);
-        int err = esp_mesh_send(NULL, &data, 0, NULL, 0);
-        // int err = esp_mesh_send(NULL, &data, MESH_DATA_P2P, NULL, 0);
-        printf("done %d\n",err);
-        free(mensa);
-    }
-}
-
 /// to get ssl certificate 
 //                                                <------------------ Site/Port ------------------------->
 // echo "" | openssl s_client -showcerts -connect 8cb3b896a9ff4973ab94b219d8ef1de8.s2.eu.hivemq.cloud:8883 | sed -n "1,/Root/d; /BEGIN/,/END/p" | openssl x509 -outform PEM >hive.pem
@@ -827,31 +693,6 @@ void esp_mesh_p2p_rx_main(void *arg)
                         mesh_layer, MAC2STR(mesh_parent_addr.addr), MAC2STR(from.addr),
                         data.size, esp_get_minimum_free_heap_size(), flag, err, data.proto,
                         data.tos);
-        
-
-    // mesh_process((char*)data.data);
-    /*
-    char *mensaje=(char *)malloc(1000);
-    if(!mensaje)
-    {
-        printf("Now RAM for mesh msg\n");
-        return;
-    }
-    strcpy(mensaje,(char *)data.data);
-    mqttMsg.msg=mensaje;
-    mqttMsg.lenMsg=strlen(mensaje);
-    printf("Sending mqtt mesh msg [%s]\n",mensaje);
-     if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)
-        {
-            printf("Error queueing msg\n");
-            if(mqttMsg.msg)
-                free(mqttMsg.msg);  //due to failure
-        }
-        else
-            //must set the wifi_event_bit SEND_MQTT_BIT, else it will just collect the message in the queue
-            xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send everything now !!!!!
-        }
-        */
         }
     }
 }
@@ -923,19 +764,6 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
                  (mesh_layer == 2) ? "<layer2>" : "", MAC2STR(id.addr));
         last_layer = mesh_layer;
         mesh_netifs_start(esp_mesh_is_root());
-        if(!theConf.meterconf && theConf.meshconf==2)
-{
-    printf("Send mesh for meter conf\n");
-    // need to send a mesh msg to HQ for CID and PID
-    // at this point we are in a mesh
-    send_cid_pid_mesh();
-    theConf.meterconf=4;     // in order to reboot and configure 
-    write_to_flash();
-    delay(3000);
-    esp_restart();
-    // //start meter config without connecting to AP via Mesh itself
-    // meter_configure(NRT); //we are NOT root
-}
     }
     break;
     case MESH_EVENT_PARENT_DISCONNECTED: {
