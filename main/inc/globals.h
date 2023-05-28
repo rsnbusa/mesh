@@ -21,7 +21,7 @@ EXTERN esp_aes_context		        ctx ;
 EXTERN pcnt_config_t                pcnt_config[8];
 EXTERN uint8_t                      ssignal[8],dia,mes,displayMode,suma[MAXDEVSS],s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE*6+1],MESH_ID[6];
 EXTERN int16_t                      theGuard,lastFont,lastalign,oldcual,timeSlotStart,timeSlotEnd,sentMqtt;
-EXTERN int                          cid,pid,oldCurBeat[MAXDEVSS],oldCurLife[MAXDEVSS],lastkwh[MAXDEVSS],msgcount,s_retry_num,mesh_layer ;
+EXTERN int                          oldCurBeat[MAXDEVSS],oldCurLife[MAXDEVSS],lastkwh[MAXDEVSS],msgcount,s_retry_num,mesh_layer ;
 EXTERN bool                         donef,mqttf,is_running,webLogin;
 EXTERN bool                         nakf,logof,okf,favf;
 EXTERN FramSPI						fram;
