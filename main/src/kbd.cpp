@@ -542,9 +542,9 @@ int cmdEnDecrypt(int argc, char **argv)
         if(dkey<=0)
           return 0;
         sprintf(kkey,"%016d",dkey);
-        printf("num [%s]\n",kkey);
+        // printf("num [%s]\n",kkey);
         sprintf(laclave,"%s%s",kkey,kkey);
-        printf("clave [%s] %d\n",laclave,strlen(laclave));
+        // printf("clave [%s] %d\n",laclave,strlen(laclave));
         char *aca=(char*)malloc (1000);
         err=aes_encrypt(SUPERSECRET,sizeof(SUPERSECRET),aca,laclave);
         ESP_LOG_BUFFER_HEX(MESH_TAG,aca,err);

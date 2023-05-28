@@ -192,7 +192,7 @@ int save_sta_pass(char *sta,char * psw)
 		return ESP_OK;
 }
 
-bool check_key(int key)
+bool check_key(uint64_t key)
 {
 	char kkey[17],laclave[33];
 	int challenge;
@@ -210,17 +210,17 @@ bool check_key(int key)
 	}
 
 	sprintf(kkey,"%016d",theConf.cid);
-	printf("num [%s]\n",kkey);
+	// printf("num [%s]\n",kkey);
 	sprintf(laclave,"%s%s",kkey,kkey);
-	printf("clave [%s] %d\n",laclave,strlen(laclave));
-	char *aca=(char*)malloc (1000);
+	// printf("clave [%s] %d\n",laclave,strlen(laclave));
+	char *aca=(char*)malloc (100);
 
 	aes_encrypt(SUPERSECRET,sizeof(SUPERSECRET),aca,laclave);
-	ESP_LOG_BUFFER_HEX(MESH_TAG,aca,strlen(SUPERSECRET));
-	ESP_LOG_BUFFER_HEX(MESH_TAG,&challenge,4);
+	// ESP_LOG_BUFFER_HEX(MESH_TAG,aca,strlen(SUPERSECRET));
+	// ESP_LOG_BUFFER_HEX(MESH_TAG,&challenge,4);
 
 int como=memcmp((void*)aca,(void*)&challenge,4);
-printf("Como %d\n",como);
+// printf("Como %d\n",como);
 	free(aca);
 	if(como==0)
 		return true;
@@ -231,12 +231,15 @@ printf("Como %d\n",como);
 
 static esp_err_t configure(httpd_req_t *req)
 {
-	char temp[10],param[40],laclave[10],elmesh[20],meshpsw[10];
+	char temp[20],param[40],laclave[20],elmesh[20],meshpsw[20];
 	int desde=0,hasta,buf_len;
 	char *buf=NULL;
 	char *answer;
 	bool errores=false;
-printf("Configuration\n");
+	char *ptr;
+	uint32_t keyread;
+
+printf("Configuration cid\n");
 	buf_len = httpd_req_get_url_query_len(req) + 1;
 	if (buf_len > 1)
 	{
@@ -249,13 +252,14 @@ printf("Configuration\n");
 				if(getParam(buf,(char*)"passw",param))
 				{
 					strcpy(laclave,param);
-					uint32_t keyread=atoi(laclave);
-					printf("Key %d %d\n",keyread,theConf.confpassword);
+					// ESP_LOG_BUFFER_HEX(MESH_TAG,&param,strlen(param));
+					keyread=strtoul(laclave, &ptr, 16);
+					// printf("Key %u %d\n",keyread,theConf.cid);
+					// ESP_LOG_BUFFER_HEX(MESH_TAG,&keyread,sizeof(keyread));
 
 					if(!check_key(keyread))
-					// if(keyread!=theConf.confpassword)
 					{
-						printf("Not same key %d %d\n",keyread,theConf.confpassword);
+						// printf("Not same key %d %d\n",keyread,theConf.cid);
 						sendnak(req);
 						return ESP_OK;
 					}

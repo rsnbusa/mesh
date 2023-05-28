@@ -13,7 +13,7 @@ int aes_encrypt(const char* src, size_t son, char *dst,const char *cualKey)
 	int rem= theSize % 16;
 	theSize+=16-rem;			//round to next 16 for AES
 
-printf("Son %d[%s] Size %d\n",son,src,theSize);
+// printf("Son %d[%s] Size %d\n",son,src,theSize);
 	char *donde=(char*)malloc(theSize);
 	if (!donde)
 	{
