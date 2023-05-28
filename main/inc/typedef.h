@@ -29,7 +29,6 @@ typedef struct logl{
 } loglevel_t;
 
 typedef struct aes_en_ec{
-    struct arg_str *mode;        
     struct arg_int *key;        
     struct arg_end *end;
 } aes_en_dec_t;

@@ -5,28 +5,15 @@
 #define SSID "Porton"
 #define PSW "csttpstt"
 
-// xQueueHandle pcnt_evt_queue;   // A queue to handle pulse counter events
-
-void mqtt_sender(void *pArg);
-static void    mqtt_app_start();
-
 
 int aes_encrypt(const char* src, size_t son, char *dst,const char *cualKey)
 {
-
-#ifdef DEBUGX
-	if(!theConf.crypt)
-	{
-		memcpy(dst,src,son);
-		return son;
-	}
-#endif
-
 	bzero(iv,sizeof(iv));
 	int theSize=son;
 	int rem= theSize % 16;
 	theSize+=16-rem;			//round to next 16 for AES
 
+printf("Son %d[%s] Size %d\n",son,src,theSize);
 	char *donde=(char*)malloc(theSize);
 	if (!donde)
 	{
@@ -42,11 +29,7 @@ int aes_encrypt(const char* src, size_t son, char *dst,const char *cualKey)
 		if(esp_aes_crypt_cbc( &ctx, ESP_AES_ENCRYPT, theSize, (unsigned char*)iv, (const unsigned char*)donde, ( unsigned char*)dst )!=0)
 			printf("Could not encrypt\n");
 
-	FREEANDNULL(donde)
-
-	#ifdef HEAPSAMPLE
-			 heapSample((char*)"EncryptEnd");
-#endif
+	free(donde);
 	return theSize;
 }
 
@@ -1154,6 +1137,10 @@ void init_vars()
 	io_conf.pull_down_en =GPIO_PULLDOWN_DISABLE;
 	io_conf.pin_bit_mask = (1ULL<<0);     //input pins
 	gpio_config(&io_conf);
+
+    // aes init 
+    esp_aes_init( &ctx );
+
 }
 
 // {"cmd":"initmeter","unit":0,"mid":"1111111111","kwh":1111,"bpk":800}
@@ -1746,8 +1733,8 @@ void wifi_init_network(bool como)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_ap();
-    if(como)
-        esp_netif_create_default_wifi_sta();
+    // if(como)
+    //     esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -1758,8 +1745,8 @@ void wifi_init_network(bool como)
                                                         NULL,
                                                         NULL));
 
-    if(como)
-        ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_handler_conf, NULL));
+    // if(como)
+    //     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_handler_conf, NULL));
 
     wifi_config_t wifi_config;
     bzero(&wifi_config,sizeof(wifi_config));
@@ -1779,28 +1766,28 @@ void wifi_init_network(bool como)
     wifi_config.ap.max_connection = 1;
     wifi_config.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
 
-    if(como)
-       ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-    else
+    // if(como)
+    //    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    // else
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
 
-    if (como)           //only if you are ROOT we have access to a knwon SSID and Password made by Provisioning
-    {
-        wifi_config_t config_sta;
-        esp_wifi_get_config( WIFI_IF_STA,&config_sta);      //get saved configuration by Provision Manager
-        bzero(&wifi_config,sizeof(wifi_config));//very important, do it again for sta else corrupted for ESP_IF_WIFI_STA
+    // if (como)           //only if you are ROOT we have access to a knwon SSID and Password made by Provisioning
+    // {
+    //     wifi_config_t config_sta;
+    //     esp_wifi_get_config( WIFI_IF_STA,&config_sta);      //get saved configuration by Provision Manager
+    //     bzero(&wifi_config,sizeof(wifi_config));//very important, do it again for sta else corrupted for ESP_IF_WIFI_STA
        
-        strcpy((char*)wifi_config.sta.ssid,(char*)config_sta.sta.ssid);
-        strcpy((char*)wifi_config.sta.password,(char*)config_sta.sta.password);
-        printf("Conf Sta config ssid [%s][%s]\n",(char*)wifi_config.sta.ssid,(char*)wifi_config.sta.password);
-        // strcpy((char*)wifi_config.sta.ssid,"Porton");
-        // strcpy((char*)wifi_config.sta.password,"csttpstt");
-        wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA_PSK;
-        wifi_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    }
+    //     strcpy((char*)wifi_config.sta.ssid,(char*)config_sta.sta.ssid);
+    //     strcpy((char*)wifi_config.sta.password,(char*)config_sta.sta.password);
+    //     printf("Conf Sta config ssid [%s][%s]\n",(char*)wifi_config.sta.ssid,(char*)wifi_config.sta.password);
+    //     // strcpy((char*)wifi_config.sta.ssid,"Porton");
+    //     // strcpy((char*)wifi_config.sta.password,"csttpstt");
+    //     wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA_PSK;
+    //     wifi_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+    //     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    // }
     printf("Starting wifi\n");
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_LOGI(MESH_TAG, "wifi_init_softap finished. SSID:%s password:%s channel:%d", apssid, appsw, 4);
@@ -1821,13 +1808,13 @@ void meter_configure(bool como)
     wifi_init_network(como);
 
     //send  CONFIGURE challenge to Host. Person doing configuration must call HQ (or automated system) to get password
-    if(como)
-    {
+    // if(como)
+    // {
 
         //send an mqtt message to Host since we are root and have access to router and mqtt manager
         // printf("Send a Mqtt message with password challenge wait\n");
         
-        xEventGroupWaitBits(wifi_event_group, MQTT_BIT,pdFALSE,pdTRUE,portMAX_DELAY);    //wait forever, this is the starting gun
+        // xEventGroupWaitBits(wifi_event_group, MQTT_BIT,pdFALSE,pdTRUE,portMAX_DELAY);    //wait forever, this is the starting gun
         // printf("Mqtt ready... send it\n");
                 cid= (esp_random() % 999999);
                 char tmp[12];
@@ -1842,35 +1829,35 @@ void meter_configure(bool como)
                     xSemaphoreGive(I2CSem);
                 }
 
-        char * mensa=(char*)malloc(300);
-        if(mensa)
-        {
-            pid= (esp_random() % 999999);
-            theConf.confpassword=pid;
-            write_to_flash();
-            sprintf(mensa,"{\"cmd\":\"conf\",\"cid\":%d,\"psw\":%d}",cid,pid);
-            sprintf(topic,"%s/%d",configQueue,cid);
-            esp_mqtt_client_publish(clientCloud, topic, mensa,strlen(mensa), 1,0);
-            delay(100);
-            free(mensa);
-        }
+        // char * mensa=(char*)malloc(300);
+        // if(mensa)
+        // {
+        //     pid= (esp_random() % 999999);
+        //     theConf.confpassword=pid;
+        //     write_to_flash();
+        //     sprintf(mensa,"{\"cmd\":\"conf\",\"cid\":%d,\"psw\":%d}",cid,pid);
+        //     sprintf(topic,"%s/%d",configQueue,cid);
+        //     esp_mqtt_client_publish(clientCloud, topic, mensa,strlen(mensa), 1,0);
+        //     delay(100);
+        //     free(mensa);
+        // }
     
-    }
-    else
-    {
-        printf("Send NON ROOT Challenge\n");
-        //send a mesh message to Root to send a mqtt message to Host
-    }
-        #ifdef DISPLAY
-    if(xSemaphoreTake(I2CSem, portMAX_DELAY/  portTICK_RATE_MS))		
-    {  
-        u8g2_ClearBuffer(&u8g2);
-        sprintf(topic,"%d",theConf.cid);
-        ssdString(10,38,topic,true);
-        xSemaphoreGive(I2CSem);
-    }
+    // }
+    // else
+    // {
+    //     printf("Send NON ROOT Challenge\n");
+    //     //send a mesh message to Root to send a mqtt message to Host
+    // }
+    //     #ifdef DISPLAY
+    // if(xSemaphoreTake(I2CSem, portMAX_DELAY/  portTICK_RATE_MS))		
+    // {  
+    //     u8g2_ClearBuffer(&u8g2);
+    //     sprintf(topic,"%d",theConf.cid);
+    //     ssdString(10,38,topic,true);
+    //     xSemaphoreGive(I2CSem);
+    // }
 
-#endif
+// #endif
     while(true)
     {
         delay(1000);        // Webserver will restart after configuration or timeout
@@ -2025,7 +2012,7 @@ void app_main(void)
     if(!theConf.meshconf)       //never configured
         park_state();           // if not configured at all, choose 
     
-    if(theConf.meterconf==0 && theConf.meshconf==1 )  // Root node
+    if(theConf.meterconf==0  )  // Root node
     {
         meter_configure(ROOT);      //start the STA for access to Router directly.
                                     // need the Router to send MQTT to HQ with Challenge ID(CID) and Passwiord(PID)
@@ -2033,13 +2020,13 @@ void app_main(void)
                                     // info as MQTT, but mesh root will send it for us
     }
 
-    if(theConf.meterconf==4)
-    {
-        printf("Non Root configure meters\n");
-        // theConf.meterconf=2;        //back to original setup as NRT
-        write_to_flash();           
-        meter_configure(NRT);       //will restart
-    }
+    // if(theConf.meterconf==4)
+    // {
+    //     printf("Non Root configure meters\n");
+    //     // theConf.meterconf=2;        //back to original setup as NRT
+    //     write_to_flash();           
+    //     meter_configure(NRT);       //will restart
+    // }
     
    xTaskCreate(&displayManager,"displ",10240,NULL, 10, NULL); 	        //OLED manager
     

@@ -536,40 +536,20 @@ int cmdEnDecrypt(int argc, char **argv)
         return 0;
     }
 
-  if (endec.mode->count) 
-  {
-      mode=endec.mode->sval[0];
       if (endec.key->count) 
       {
-          dkey=endec.key->ival[0];
-          if(dkey<=0)
-            return 0;
-          if(strcmp(mode,"d")==0)
-          {
-            // decrypt 
-          }
-          else
-          {
-            if (strcmp(mode,"e")==0)
-            {
-              sprintf(kkey,"%016d",dkey);
-              printf("num [%s]\n",kkey);
-              sprintf(laclave,"%s%s",kkey,kkey);
-              printf("clave [%s] %d\n",laclave,strlen(laclave));
-              char *aca=(char*)malloc (1000);
-
-              err=aes_encrypt(SUPERSECRET,sizeof(SUPERSECRET),aca,laclave);
-              // if(err)
-              // {
-              //   printf("error encrypting %x\n",err);
-              //   return 0;
-              // }
-              ESP_LOG_BUFFER_HEX(MESH_TAG,aca,strlen(SUPERSECRET));
-            }
-          }
+        dkey=endec.key->ival[0];
+        if(dkey<=0)
+          return 0;
+        sprintf(kkey,"%016d",dkey);
+        printf("num [%s]\n",kkey);
+        sprintf(laclave,"%s%s",kkey,kkey);
+        printf("clave [%s] %d\n",laclave,strlen(laclave));
+        char *aca=(char*)malloc (1000);
+        err=aes_encrypt(SUPERSECRET,sizeof(SUPERSECRET),aca,laclave);
+        ESP_LOG_BUFFER_HEX(MESH_TAG,aca,err);
       }
-
-  }
+      
   return 0;
 }
 
@@ -664,7 +644,6 @@ void kbd(void *pArg)
   resetlevel.cflags=               arg_int0(NULL, "f", "0-2(0=All 1=Configuration 2=Mesh)", "Reset Flags");
   resetlevel.end=                  arg_end(1);
 
-  endec.mode=                      arg_str0(NULL, "m", "E..ncryt D..ecrypt)", "Encrypt and decrypta AES text");
   endec.key=                       arg_int0(NULL, "k", "AES key numeric", "Aes Key");
   endec.end=                       arg_end(1);
 
