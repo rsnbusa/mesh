@@ -74,7 +74,7 @@ static int findInternalCmds(const char * cual)
 {
 	for (int a=0;a<MAXINTCMDS;a++)
 	{
-        printf("IntCmd %s buscado por %s\n",internal_cmds[a],cual);
+     //   printf("IntCmd %s buscado por %s\n",internal_cmds[a],cual);
 		if(strcmp(internal_cmds[a],cual)==0)
 			return a;
 	}
@@ -107,8 +107,6 @@ void send_ssid_broadcast()
 }
 
 void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
-
-// void static mesh_process(char * que)
 {
     mqttSender_t        mqttMsg;
     cJSON 	            *elcmd;
@@ -119,7 +117,7 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
     char *mensaje=(char *)malloc(1000);
 
     strcpy(mensaje,(char*)data->data);
-    printf("Procesor message in %s\n",mensaje);
+ //   printf("Procesor message in %s\n",mensaje);
     elcmd= cJSON_Parse(mensaje);		//plain text to cJSON... must eventually cDelete elcmd
     if (elcmd)
     {   // valid json
@@ -127,14 +125,14 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
         cJSON *command= 		cJSON_GetObjectItem(elcmd,"cmd");
         if(command)
             {
-                printf("Find cmd [%s]\n",command->valuestring);
+              //  printf("Find cmd [%s]\n",command->valuestring);
                 int cualf=findInternalCmds(command->valuestring);
                 if(cualf>=0)
                 {
                     switch (cualf)
                     {
                         case 0:// conf cmd. Only on root, but stilll make sure 
-                            printf("Internal Config\n");
+                           // printf("Internal Config\n");
                             if(esp_mesh_is_root())
                             {
                                 cJSON *tcid= 		cJSON_GetObjectItem(elcmd,"cid");
@@ -204,33 +202,6 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
             }
     }   //no else, just fall thru 
 
-//used a relay
-    // if (data->data[0] == CMD_ROUTE_TABLE) {
-    //     int size =  data->size - 1;
-    //     if (s_route_table_lock == NULL || size%6 != 0) {
-    //         ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unexpected size");
-    //         return;
-    //     }
-    //     xSemaphoreTake(s_route_table_lock, portMAX_DELAY);
-    //     s_route_table_size = size / 6;
-    //     for (int i=0; i < s_route_table_size; ++i) {
-    //         ESP_LOGI(MESH_TAG, "Received Routing table [%d] "
-    //                 MACSTR, i, MAC2STR(data->data + 6*i + 1));
-    //     }
-    //     memcpy(&s_route_table, data->data + 1, size);
-    //     xSemaphoreGive(s_route_table_lock);
-    // } else if (data->data[0] == CMD_KEYPRESSED) {
-    //     if (data->size != 7) {
-    //         ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unexpected size");
-    //         return;
-    //     }
-    //     ESP_LOGW(MESH_TAG, "Keypressed detected on node: "
-    //             MACSTR, MAC2STR(data->data + 1));
-    // } else {
-    //     ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unknown command");
-    // }
-    // printf("Msg in [%s] from " MACSTR "\n",(char *)data->data, MAC2STR(from->addr));
-    
     strcpy(mensaje,(char*)data->data);
     mqttMsg.queue=infoQueue;
     mqttMsg.msg=mensaje;
@@ -1450,6 +1421,16 @@ esp_err_t new_provision()
     ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler_prov));
     ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler_prov));
 
+    wifi_config_t       configsta;
+    esp_wifi_get_config( WIFI_IF_STA,&configsta);  
+    printf("Provision Sta %s Pasw %s\n",configsta.sta.ssid,configsta.sta.password);
+    if(strlen((char*)(char*)configsta.sta.password)>7)
+    {
+        strcpy(theConf.thessid,(char*)configsta.sta.ssid);
+        strcpy(theConf.thepass,(char*)configsta.sta.password);
+        write_to_flash();
+    }
+
     return ESP_OK;
 
 
@@ -1790,20 +1771,13 @@ void app_main(void)
     // wifi_config_t config;
     // esp_wifi_get_config( WIFI_IF_STA,&config);      //get saved SSID and password from STA, our router
     // // printf("SSID %s password %s\n",config.ap.ssid,config.ap.password);
-    char missid[30],mipassw[10];
+    char missid[30],mipassw[18];
 
-    strcpy(missid,"Porton");
-    strcpy(mipassw,"csttpstt");
-
-    wifi_config_t       configsta;
-
-    err=esp_wifi_get_config( WIFI_IF_STA,&configsta);  
-    printf("Sta %s Pasw %d\n",configsta.sta.ssid,configsta.sta.password);
-    if(strlen((char*)(char*)configsta.sta.password)>7)
-    {
-        strcpy(missid,(char*)configsta.sta.ssid);
-        strcpy(mipassw,(char*)configsta.sta.password);
-    }
+    // strcpy(missid,"Porton");
+    // strcpy(mipassw,"csttpstt");
+    strcpy(missid,theConf.thessid);
+    strcpy(mipassw,theConf.thepass);
+    
         /*  mesh initialization */
     ESP_ERROR_CHECK(esp_mesh_init());
     ESP_ERROR_CHECK(esp_event_handler_register(MESH_EVENT, ESP_EVENT_ANY_ID, &mesh_event_handler, NULL));

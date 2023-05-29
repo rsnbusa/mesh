@@ -100,6 +100,7 @@ typedef struct config {
     char        mqttServer[100];
     char        mqttUser[50];
     char        mqttPass[50];
+    char        thessid[40], thepass[20];
 } config_flash;
 
 #endif

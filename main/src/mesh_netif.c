@@ -155,14 +155,14 @@ static esp_err_t mesh_netif_transmit_from_root_ap(void *h, void *buffer, size_t 
             ESP_LOGD(TAG, "Broadcast: Sending to [%d] " MACSTR, i, MAC2STR(s_route_table[i].addr));
             esp_err_t err = esp_mesh_send(&s_route_table[i], &data, MESH_DATA_P2P, NULL, 0);
             if (ESP_OK != err) {
-                ESP_LOGE(TAG, "Send with err code %d %s", err, esp_err_to_name(err));
+                ESP_LOGE(TAG, "Send with err code STA %d %s", err, esp_err_to_name(err));
             }
         }
     } else {
         // Standard P2P
         esp_err_t err = esp_mesh_send(&dest_addr, &data, MESH_DATA_P2P, NULL, 0);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Send with err code %d %s", err, esp_err_to_name(err));
+            ESP_LOGE(TAG, "Send with err code P2P %d %s", err, esp_err_to_name(err));
             return err;
         }
     }
@@ -183,7 +183,7 @@ static esp_err_t mesh_netif_transmit_from_node_sta(void *h, void *buffer, size_t
     data.tos = MESH_TOS_P2P;
     esp_err_t err = esp_mesh_send(NULL, &data, MESH_DATA_TODS, NULL, 0);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Send with err code %d %s", err, esp_err_to_name(err));
+        ESP_LOGE(TAG, "Send with err code node sta %d %s", err, esp_err_to_name(err));
     }
     return err;
 }
