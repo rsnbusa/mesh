@@ -206,7 +206,7 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
     mqttMsg.queue=infoQueue;
     mqttMsg.msg=mensaje;
     mqttMsg.lenMsg=strlen(mensaje);
-    printf("Sending mqtt mesh  not internal msg [%s]\n",mensaje);
+    // printf("Sending mqtt mesh  not internal msg [%s]\n",mensaje);
 
      if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)      //will free mensaje malloc
         {
@@ -271,6 +271,7 @@ void write_to_flash() //save our configuration
 	}
 }
 const int WIFI_CONNECTED_EVENT = BIT0;
+const int WIFI_DEINIT_EVENT = BIT1;
 
 static void event_handler_prov(void* arg, esp_event_base_t event_base,
                           int32_t event_id, void* event_data)
@@ -283,6 +284,7 @@ static void event_handler_prov(void* arg, esp_event_base_t event_base,
             case WIFI_PROV_START:
                 ESP_LOGI(MESH_TAG, "Provisioning started");
                 break;
+
             case WIFI_PROV_CRED_RECV: {
                 wifi_sta_config_t *wifi_sta_cfg = (wifi_sta_config_t *)event_data;
                 ESP_LOGI(MESH_TAG, "Received Wi-Fi credentials"
@@ -306,6 +308,11 @@ static void event_handler_prov(void* arg, esp_event_base_t event_base,
                 ESP_LOGI(MESH_TAG, "Provisioning Ended");
                 /* De-initialize manager once provisioning is finished */
                 wifi_prov_mgr_deinit();
+                break;
+            case WIFI_PROV_DEINIT:
+                ESP_LOGI(MESH_TAG, "Provisioning Deinit");
+            // new provision is waiting for all this stuff to be finalized, inform him we are done
+                xEventGroupSetBits(wifi_event_group, WIFI_DEINIT_EVENT);
                 break;
             default:
                 break;
@@ -430,7 +437,7 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
 
-				 printf("Mqtt connected\n");
+				//  printf("Mqtt connected\n");
 
         	// mqttf=true;
             esp_mqtt_client_subscribe(client,cmdQueue, 0);
@@ -565,8 +572,8 @@ void mqttMgr(void *pArg)
 }
 
 /// to get ssl certificate 
-//                                                <------------------ Site/Port ------------------------->
-// echo "" | openssl s_client -showcerts -connect 8cb3b896a9ff4973ab94b219d8ef1de8.s2.eu.hivemq.cloud:8883 | sed -n "1,/Root/d; /BEGIN/,/END/p" | openssl x509 -outform PEM >hive.pem
+//                                                <-------- Site/Port -->
+// echo "" | openssl s_client -showcerts -connect m13.cloudmqtt.com:28747 | sed -n "1,/Root/d; /BEGIN/,/END/p" | openssl x509 -outform PEM >hive.pem
 
 static void mqtt_app_start(void)
 {
@@ -575,27 +582,32 @@ static void mqtt_app_start(void)
     bzero(who,sizeof(who));
     sprintf(who,"Meterserver%d",theConf.controllerid);
     printf("MQTT NodeId %s\n",who);
-// extern const uint8_t hive_start[]   asm("_binary_hive_pem_start");
-// extern const uint8_t hive_end[]   asm("_binary_hive_pem_end");
 
-// int ssllen=hive_end-hive_start;
+    extern const uint8_t hive_start[]   asm("_binary_hive_pem_start");
+    extern const uint8_t hive_end[]   asm("_binary_hive_pem_end");
 
-    // wifi_event_group = xEventGroupCreate();
-
+    int ssllen=hive_end-hive_start;
 
     bzero((void*)&mqtt_cfg,sizeof(mqtt_cfg));
-    mqtt_cfg.client_id=				    who;
-    mqtt_cfg.username=					"wckwlvot";
-    mqtt_cfg.password=					"MxoMTQjeEIHE";
-    mqtt_cfg.uri = 					    "mqtt://m13.cloudmqtt.com:18747";
-    // mqtt_cfg.username=					    "user1";
-    // mqtt_cfg.password=					    "Csttpstt1";
-    // mqtt_cfg.uri = 					        "ssl://8cb3b896a9ff4973ab94b219d8ef1de8.s2.eu.hivemq.cloud:8883";
-    mqtt_cfg.event_handle = 			    mqtt_event_handler;
-    mqtt_cfg.disable_auto_reconnect=	true;
-    // mqtt_cfg.cert_pem=NULL;
-    // mqtt_cfg.cert_pem=(char*)hive_start;
-    // mqtt_cfg.cert_len=ssllen;
+    mqtt_cfg.client_id=				            who;
+    mqtt_cfg.username=					        "wckwlvot";
+    mqtt_cfg.password=					        "MxoMTQjeEIHE";
+    #ifndef MQTTSECURE
+    mqtt_cfg.uri = 					            "mqtt://m13.cloudmqtt.com:18747";
+    mqtt_cfg.cert_pem=                          NULL;
+    mqtt_cfg.cert_len=                          0;
+    #else
+    mqtt_cfg.uri = 					            "mqtts://m13.cloudmqtt.com:28747";  // pem certificate for m13.cloudmqtt.com:28747
+    mqtt_cfg.cert_pem=                          (char*)hive_start;
+    mqtt_cfg.cert_len=                          ssllen;
+    #endif
+    mqtt_cfg.event_handle = 			        mqtt_event_handler;
+    mqtt_cfg.disable_auto_reconnect=	        true;
+
+
+// NOTICE
+// WITHOUT ssl encryption average3 message of 8 meters takes aprox 450ms
+// WITH ssl encryption it 1200ms to 2600ms  really a LOT!!!!!! for your information IMPORTANT
 
     mqttQ = xQueueCreate( 20, sizeof( mqttMsg_t ) );
     if(!mqttQ)
@@ -613,16 +625,8 @@ static void mqtt_app_start(void)
     if(clientCloud)
     {
         printf("Mqtt started\n");
-        xTaskCreate(&mqttMgr,"mqtt",10240,NULL, 5, NULL);
-        xTaskCreate(&mqtt_sender,"mqttsend",10240,NULL, 5, NULL);
-        if(!theConf.meterconf)
-        {
-            int err=esp_mqtt_client_start(clientCloud);         //start a MQTT connection, wait for it in MQTT_BIT
-            if(err)
-                printf("Could not start Mqtt Conf %d %x\n",err,err);
-            else
-                printf("Mqtt started conf\n");
-        }
+        xTaskCreate(&mqttMgr,"mqtt",8192,NULL, 5, NULL);
+        xTaskCreate(&mqtt_sender,"mqttsend",8192,NULL, 5, NULL);
     }
     else
     {
@@ -856,6 +860,7 @@ void init_vars()
 
     // mesh stuff 
     mesh_layer = -1;
+    mesh_started=false;
     // mesh id as we cannot use static variable configuration
     memset(MESH_ID,0x77,6);
     // printf("Mesh %x\n",theConf.meshid);
@@ -933,6 +938,7 @@ void init_vars()
 	io_conf.mode = GPIO_MODE_INPUT;
 	io_conf.pull_up_en =GPIO_PULLUP_ENABLE;
 	io_conf.pull_down_en =GPIO_PULLDOWN_DISABLE;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
 	io_conf.pin_bit_mask = (1ULL<<0);     //input pins
 	gpio_config(&io_conf);
 
@@ -1076,7 +1082,7 @@ void mqtt_sender(void *pArg)        // MQTTT data sender task
             {
                 if(mensaje.msg)
                 {
-                    printf("Cola %s\n",mensaje.queue);
+                    // printf("Cola %s\n",mensaje.queue);
                     xEventGroupClearBits(wifi_event_group, PUB_BIT);	// clear bit to wait on
                     esp_mqtt_client_publish(clientCloud,(char*) mensaje.queue, (char*)mensaje.msg,strlen((char*)mensaje.msg), 1,0);
                     // get confirmation of msg being published
@@ -1085,7 +1091,7 @@ void mqtt_sender(void *pArg)        // MQTTT data sender task
                     printf("Mqtt time %dms\n",endtest-starttest);
                     starttest=xmillis();
                     free(mensaje.msg);
-                    printf("done free\n");
+                    // printf("done free\n");
                 }               
             }
             else        // queue empty, now close
@@ -1093,13 +1099,13 @@ void mqtt_sender(void *pArg)        // MQTTT data sender task
                 err=esp_mqtt_client_stop(clientCloud);
                 if(err)
                     printf("Error stoping mqtt %x\n",err);
-                else
-                    printf("mqtt session closed\n");
+                // else
+                    // printf("mqtt session closed\n");
                 
                 break;
             }
         }
-        printf("mqtt sender wait again\n");
+        // printf("mqtt sender wait again\n");
     }
 }
 
@@ -1218,7 +1224,7 @@ void post_root()
         ssdString(10,38,(char*)"Time",true);
         xSemaphoreGive(I2CSem);
     }
-    xTaskCreate(&sntpget,"sntp",10240,NULL, 10, NULL); 	        // get real time
+    xTaskCreate(&sntpget,"sntp",4096,NULL, 10, NULL); 	        // get real time
     if(xSemaphoreTake(I2CSem, portMAX_DELAY/  portTICK_RATE_MS))		
     {  
         u8g2_ClearBuffer(&u8g2);
@@ -1416,7 +1422,12 @@ esp_err_t new_provision()
         return ESP_OK;
     }
    
-    xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_EVENT, false, true, portMAX_DELAY);
+    xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_EVENT, false, true, portMAX_DELAY);    //wait for both
+    printf("Wifi Bit\n");
+    xEventGroupWaitBits(wifi_event_group, WIFI_DEINIT_EVENT, false, true, portMAX_DELAY);    //wait for both
+    printf("done wait  deinit\n");
+    // xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_EVENT, false, true, portMAX_DELAY);
+    // xEventGroupWaitBits(wifi_event_group, WIFI_DEINIT_EVENT, false, true, portMAX_DELAY);
     ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, &event_handler_prov));
     ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler_prov));
     ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler_prov));
@@ -1424,12 +1435,12 @@ esp_err_t new_provision()
     wifi_config_t       configsta;
     esp_wifi_get_config( WIFI_IF_STA,&configsta);  
     printf("Provision Sta %s Pasw %s\n",configsta.sta.ssid,configsta.sta.password);
-    if(strlen((char*)(char*)configsta.sta.password)>7)
-    {
-        strcpy(theConf.thessid,(char*)configsta.sta.ssid);
-        strcpy(theConf.thepass,(char*)configsta.sta.password);
-        write_to_flash();
-    }
+    strcpy(theConf.thessid,(char*)configsta.sta.ssid);
+    strcpy(theConf.thepass,(char*)configsta.sta.password);
+
+    esp_event_loop_delete_default();
+    esp_netif_destroy_default_wifi(esp_sta);
+    esp_wifi_deinit();
 
     return ESP_OK;
 
@@ -1445,76 +1456,27 @@ void park_state()
     #ifdef DISPLAY
     if(xSemaphoreTake(I2CSem, portMAX_DELAY/  portTICK_RATE_MS))		
     {   
-        u8g2_ClearBuffer(&u8g2);
-        ssdString(10,38,(char*)"Mesh",true);
+        u8g2_ClearBuffer(&u8g2);                
+        ssdString(10,38,(char*)"PROV",true);
         xSemaphoreGive(I2CSem);
     }
-#endif
-// printf("Mesh\n");
-    while(true)
-    {
-        delay(500);
-        if(!gpio_get_level((gpio_num_t)0))
-        {
-                // printf("start btn\n");
-                //start counting millis >2000 x < 2500 is Non Root Mesh else >2500 provision
-                startm=xmillis();
-                while(!gpio_get_level((gpio_num_t)0))    // released
-                    delay(100);
-            
-                //button released
-                elapsed=xmillis()-startm;
-                // printf("Elapsed %d\n",elapsed);
-            
-            if(elapsed>MINB)
-            {
-                if(elapsed>MAXB)        //Root selected, start  Provisioning to get Router credentials
-                {
-                    // printf("New Provision\n");
-                    #ifdef DISPLAY
-                    if(xSemaphoreTake(I2CSem, portMAX_DELAY/  portTICK_RATE_MS))		
-                    {  
-                        u8g2_ClearBuffer(&u8g2);
-                        ssdString(10,38,(char*)"PROV",true);
-                        xSemaphoreGive(I2CSem);
-                    }
-                    #endif
-                    //provision chosen, required network steps are crucial
-                    ESP_ERROR_CHECK(esp_netif_init());
-                    ESP_ERROR_CHECK(esp_event_loop_create_default());
-                    wifi_event_group = xEventGroupCreate();
-                    new_provision();            // will get SSID and Password 
-                    theConf.meshconf=1;
-                    write_to_flash();
-                    esp_restart();          // we will restart having saved our meshconf 1 ROOT
-                }
-                else
-                {       // Non Root selected meshconf=2
-                    #ifdef DISPLAY
-                    if(xSemaphoreTake(I2CSem, portMAX_DELAY/  portTICK_RATE_MS))		
-                    {  
-                        u8g2_ClearBuffer(&u8g2);
-                        ssdString(10,38,(char*)"NROOT",true);
-                        xSemaphoreGive(I2CSem);
-                    }
-                    #endif
-                    // printf("Non Root\n");
-                    //non root chosen
-                    theConf.meshconf=2;         // NRT chosen
-                    write_to_flash();
-                    delay(5000);
-                    esp_restart();
-                }
-            }
-        }
-    }
+    #endif
+
+    //provision chosen, required network steps are crucial
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    wifi_event_group = xEventGroupCreate();
+    new_provision();            // will get SSID and Password 
+    theConf.meshconf=1;
+    write_to_flash();
+    // esp_restart();          // we will restart having saved our meshconf 1 ROOT
 }
 
 
 static void wifi_event_handler_ap(void* arg, esp_event_base_t event_base,
                                     int32_t event_id, void* event_data)
 {
-    printf("Wifi Handler ap %d\n",event_id);
+ //   printf("Wifi Handler ap %d\n",event_id);
 
     if (event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
@@ -1532,7 +1494,7 @@ static void wifi_event_handler_ap(void* arg, esp_event_base_t event_base,
     }
 }
 
-void wifi_init_network(bool como)
+void wifi_init_network()
 {
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -1553,9 +1515,9 @@ void wifi_init_network(bool como)
     uint8_t mac[6];
 
     esp_wifi_get_mac(WIFI_IF_AP,mac);
-    sprintf(apssid,"meter%2x%2x\n", mac[2],mac[3]);
+    sprintf(apssid,"%s%2x%2x\n", APPNAME,mac[2],mac[3]);
     printf("Web Name %s\n",apssid);
-    strcpy(appsw,"csttpstt");   //could use conf password or conn id as ap password
+    strcpy(appsw,"csttpstt");   //Data is protected via Challenge Id. This passw shopuld be "irrelevant"
 
     memcpy(&wifi_config.ap.ssid,apssid,strlen(apssid));
     memcpy(&wifi_config.ap.password,appsw,strlen(appsw));
@@ -1566,20 +1528,20 @@ void wifi_init_network(bool como)
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
-    printf("Starting wifi\n");
+    ESP_LOGI(MESH_TAG, "Starting wifi");
     ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_LOGI(MESH_TAG, "wifi_init_softap finished. SSID:%s password:%s channel:%d", apssid, appsw, 4);
+    ESP_LOGI(MESH_TAG, "wifi_init_softap finished. SSID:%s password:%s channel:%d", wifi_config.ap.ssid, wifi_config.ap.password,  wifi_config.ap.channel );
     //start web server
-    start_webserver(NULL);      //Root or NRT case always start the Webserver to configure Meters
+    start_webserver();      //Root or NRT case always start the Webserver to configure Meters
 }
 
-void meter_configure(bool como)
+void meter_configure()
 {
     mqttSender_t mensaje;
     char topic[40];
 
     printf("Configure Meters %d\n",theConf.meterconf);
-    wifi_init_network(como);
+    wifi_init_network();
     int cid= (esp_random() % 999999);
     char tmp[12];
     sprintf(tmp,"%d",cid);
@@ -1736,25 +1698,31 @@ void app_main(void)
         pcnt_example_init((pcnt_unit_t)a);
 
 #ifdef DEBB
-   xTaskCreate(&kbd,"kbd",10240,NULL, 10, NULL); 	        // keyboard commands
+   xTaskCreate(&kbd,"kbd",8192,NULL, 10, NULL); 	        // keyboard commands
 #endif
 
     wifi_event_group = xEventGroupCreate();
 
+
 //start checking configuration settins
 // Meshconf tells if the whole node has been config as a Root or Non Root NRT
     if(!theConf.meshconf)       //never configured
+    {
         park_state();           // if not configured at all, choose 
+      //  esp_wifi_stop();
+
+    
+    }
     
     if(theConf.meterconf==0  )  // Root node
     {
-        meter_configure(ROOT);      //start the STA for access to Router directly.
+        meter_configure();      //start the STA for access to Router directly.
                                     // need the Router to send MQTT to HQ with Challenge ID(CID) and Passwiord(PID)
                                     // but if NRT, we cannot use this. Need to connect mesh and send a meshmsg with same
                                     // info as MQTT, but mesh root will send it for us
     }
 
-   xTaskCreate(&displayManager,"displ",10240,NULL, 10, NULL); 	        //OLED manager
+   xTaskCreate(&displayManager,"displ",8192,NULL, 10, NULL); 	        //OLED manager
     
     // MESH sequence start
     ESP_ERROR_CHECK(esp_netif_init());
@@ -1814,13 +1782,14 @@ void app_main(void)
     }
     /* mesh start */
     // Boradcast address setup
-    
+    //set a global flag that MESH has started. No esp_mesh_get-running or similar call so use flag
     esp_err_t errReturn = esp_mesh_set_group_id(&GroupID, 1);
     if(errReturn)
     {
         printf("Failed to resgister Mesh Broadcast\n");
     }
     ESP_ERROR_CHECK(esp_mesh_start());
+    mesh_started=true;
     ESP_LOGI(MESH_TAG, "mesh starts successfully, heap:%d, %s\n",  esp_get_free_heap_size(),
              esp_mesh_is_root_fixed() ? "root fixed" : "root not fixed");
 

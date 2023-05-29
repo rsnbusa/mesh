@@ -508,7 +508,7 @@ void urldecode2(char *dst, const char *src)
 }
 
 
-void start_webserver(void *pArg)
+void start_webserver()
 {
 	printf("Stating webserver\n");
 	tempb=(char*)malloc(7000);

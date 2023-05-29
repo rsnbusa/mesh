@@ -20,15 +20,13 @@
 
 #define OTAURL                          "http://161.35.115.228/metermgr.bin"
 #define OTADEL                          5000
-#define MESH_TAG                        "Mesh"
+#define MESH_TAG                        "MeterMesh"
 #define WIFI_CONNECTED_BIT              BIT0
 #define WIFI_FAIL_BIT                   BIT1
 
 #define FREEANDNULL(x)		            if(x) {free(x);x=NULL;}
 #define BASEMESH                        117
-#define ROOT                            true
-#define NRT                             false
-#define MINB                            2000
-#define MAXB                            4000
 #define MAXINTCMDS                      5
 #define SUPERSECRET                     "mi mama me mima mucho"
+#define APPNAME                         "meter"
+#define MQTTSECURE                          

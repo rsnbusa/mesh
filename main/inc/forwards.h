@@ -16,7 +16,7 @@ int cmdUpdate(void *argument);
 int cmdErase(void *argument);
 int cmdOTA(void *argument);
 char * sendData(bool forced);
-void start_webserver(void *pArg);
+void start_webserver();
 void mqtt_sender(void *pArg);
-static void    mqtt_app_start();
+static void mqtt_app_start();
 #endif

@@ -345,6 +345,7 @@ int cmdConfig(int argc, char **argv)
 {
   char buf[50],buf2[50],fecha[60],myssid[20];
   time_t lastwrite,now;
+  uint8_t *my_mac;
 
   if(!theConf.meshconf)
   {
@@ -385,16 +386,22 @@ int cmdConfig(int argc, char **argv)
   lafecha(theConf.bornDate,buf);
   fram.read_guard((uint8_t*)&lastwrite);
   lafecha(lastwrite,buf2);
-  uint8_t *my_mac = mesh_netif_get_station_mac();
+
+  my_mac=(uint8_t*)malloc(20);
+  bzero(my_mac,20);
+  if(mesh_started)
+      memcpy(my_mac,mesh_netif_get_station_mac(),6);
+
   printf("\n======= Mesh Configuration Date: %s=======\n",fecha);
   printf("Firmware Version:%s NType:%s MAC:" MACSTR " LogLevel:%d\n", running_app_info.version,tipo[typ],MAC2STR(my_mac),
   theConf.loglevel);
   printf("Mesh config:%s Mesh Id: %02x Meter config:%d SubNode: %d Conf Passw:%d\n",theConf.meshconf?theConf.meshconf>1?"NonRoot":"Provision":"Not Conf",
           theConf.meshid,theConf.meterconf,theConf.subnode,theConf.confpassword);
   printf("Sta %s Psw %s ",conf.sta.ssid,conf.sta.password);
+  printf(" Config_Sta %s Config_Psw %s ",theConf.thessid,theConf.thepass);
   esp_wifi_get_config(WIFI_IF_AP, &conf);
   printf("AP %s Pswd %s\n",conf.ap.ssid,conf.ap.password);
-
+  free(my_mac);
   if(esp_mesh_is_root())
   {
     printf("Id : %d  Address: %s Created %s Slot %d  Cycle %d\n",theConf.controllerid,theConf.direccion,buf,theConf.mqttSlots,theConf.pubCycle);
@@ -547,6 +554,7 @@ int cmdEnDecrypt(int argc, char **argv)
         // printf("clave [%s] %d\n",laclave,strlen(laclave));
         char *aca=(char*)malloc (1000);
         err=aes_encrypt(SUPERSECRET,sizeof(SUPERSECRET),aca,laclave);
+        printf("%02x%02x%02x%02x\n",aca[0],aca[1],aca[2],aca[3]);
         ESP_LOG_BUFFER_HEX(MESH_TAG,aca,err);
       }
       
