@@ -81,30 +81,66 @@ static int findInternalCmds(const char * cual)
 	return ESP_FAIL;
 }
 
-void send_ssid_broadcast()
+void send_ssid_broadcast(mesh_addr_t thismac)
 {
-    int err;
+    int                 err;
     wifi_config_t       configsta;
     mesh_data_t         data;
     char                *topic;
+    time_t              now;
 
+    time(&now);
     topic=(char*)malloc(200);
     //dont check null
     err=esp_wifi_get_config( WIFI_IF_STA,&configsta);      // get station ssid and password
     if(!err)
     {
+        sprintf(topic,"{\"cmd\":\"%s\",\"ssid\":\"%s\",\"psw\":\"%s\",\"time\":%u}",internal_cmds[1],configsta.sta.ssid,
+            configsta.sta.password,(uint32_t)now);
+
         data.data=(uint8_t*)topic;
         data.size   = strlen(topic);
         data.proto  = MESH_PROTO_BIN;
         data.tos    = MESH_TOS_P2P;
-        sprintf(topic,"{\"cmd\":\"router\",\"ssid\":%s,\"psw\":%s}",configsta.sta.ssid,configsta.sta.password);
+
         //send a Broadcxast Message toa ll nodes to update SSID/Passwaord
-        err= esp_mesh_send( &GroupID, &data, MESH_DATA_P2P, NULL, MESH_OPT_SEND_GROUP); 
+        // printf("Sending Broadcast [%s]\n",(char*)data.data);
+        err= esp_mesh_send( &thismac, &data, MESH_DATA_P2P, NULL, 0); 
         if(err)
             printf("Broadcast failed %x\n",err);
     }
     free(topic);    
 }
+// void send_ssid_broadcast()
+// {
+//     int                 err;
+//     wifi_config_t       configsta;
+//     mesh_data_t         data;
+//     char                *topic;
+//     time_t              now;
+
+//     time(&now);
+//     topic=(char*)malloc(200);
+//     //dont check null
+//     err=esp_wifi_get_config( WIFI_IF_STA,&configsta);      // get station ssid and password
+//     if(!err)
+//     {
+//         sprintf(topic,"{\"cmd\":\"%s\",\"ssid\":\"%s\",\"psw\":\"%s\",\"time\":%u}",internal_cmds[1],configsta.sta.ssid,
+//             configsta.sta.password,(uint32_t)now);
+
+//         data.data=(uint8_t*)topic;
+//         data.size   = strlen(topic);
+//         data.proto  = MESH_PROTO_BIN;
+//         data.tos    = MESH_TOS_P2P;
+
+//         //send a Broadcxast Message toa ll nodes to update SSID/Passwaord
+//         // printf("Sending Broadcast [%s]\n",(char*)data.data);
+//         err= esp_mesh_send( &GroupID, &data, MESH_DATA_P2P, NULL, MESH_OPT_SEND_GROUP); 
+//         if(err)
+//             printf("Broadcast failed %x\n",err);
+//     }
+//     free(topic);    
+// }
 
 void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
 {
@@ -112,11 +148,13 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
     cJSON 	            *elcmd;
     wifi_config_t       configsta;
     int                 err; 
+    struct timeval      now;
 
 
     char *mensaje=(char *)malloc(1000);
-
     strcpy(mensaje,(char*)data->data);
+    printf("Message in [%s]\n",mensaje);
+
  //   printf("Procesor message in %s\n",mensaje);
     elcmd= cJSON_Parse(mensaje);		//plain text to cJSON... must eventually cDelete elcmd
     if (elcmd)
@@ -131,48 +169,24 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
                 {
                     switch (cualf)
                     {
-                        case 0:// conf cmd. Only on root, but stilll make sure 
-                           // printf("Internal Config\n");
-                            if(esp_mesh_is_root())
-                            {
-                                cJSON *tcid= 		cJSON_GetObjectItem(elcmd,"cid");
-                                if(tcid)
-                                {
-                                    sprintf(topic,"%s%d",infoQueue,tcid->valueint);
-                                    mqttMsg.queue=topic;
-                                    mqttMsg.msg=mensaje;
-                                    mqttMsg.lenMsg=strlen(mensaje);
-                                    if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)
-                                    {
-                                        printf("Error queueing msg\n");
-                                        if(mqttMsg.msg)
-                                            free(mqttMsg.msg);  //due to failure
-                                    };
-                                    xEventGroupSetBits(wifi_event_group, SENDMQTT_BIT);	// Send 
-                                    // esp_mqtt_client_publish(clientCloud, topic,que,strlen(que), 1,0);
-                                }
-                                cJSON_Delete(elcmd);
-                                return;
-                            }
-                            break;
-                        case 1:// requiring source ssid and password, respond using a broadcast to all to update ssid/password
-                            printf("Internal STA\n");
-                            if(esp_mesh_is_root())
-                                send_ssid_broadcast();
-
-                            cJSON_Delete(elcmd);
-                            free(mensaje); 
-                            return;
-                            break;
-                        case 2: // a msg from Root giving the current ssid/pswd
-                            printf("Update SSID\n");
-                            if(!esp_mesh_is_root()) //only non roots 
+                        // case 0:// requiring source ssid and password, respond using a broadcast to all to update ssid/password
+                        //     printf("Boot sent by a Child. Send Time and Sta/Pswd\n");
+                        //     if(esp_mesh_is_root())
+                        //         send_ssid_broadcast();
+                        //     cJSON_Delete(elcmd);
+                        //     free(mensaje); 
+                        //     return;
+                        //     break;
+                        case 1: // a msg from Root giving the current ssid/pswd
+                            printf("Boot response\n");
+                            if(!esp_mesh_is_root()) //only non ROOT 
                             {
                                 err=esp_wifi_get_config( WIFI_IF_STA,&configsta);      // get station ssid and password
                                 if(!err)
                                 {
                                     cJSON *ssid= 		cJSON_GetObjectItem(elcmd,"ssid");
                                     cJSON *pswd= 		cJSON_GetObjectItem(elcmd,"psw");
+                                    cJSON *time= 		cJSON_GetObjectItem(elcmd,"time");
                                     if(ssid && pswd)
                                     {
                                         memcpy(&configsta.sta.ssid,ssid->valuestring,strlen(ssid->valuestring));
@@ -183,6 +197,11 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
                                     }
                                     else
                                         printf("Update SSID without ssid or pswd\n");
+                                    setenv("TZ", LOCALTIME, 1);
+                                    tzset();
+                                    now.tv_sec=time->valueint;
+                                    now.tv_usec=0;
+                                    settimeofday(&now, NULL);
                                 }
                                 else
                                 {
@@ -700,6 +719,10 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
         ESP_LOGI(MESH_TAG, "<MESH_EVENT_CHILD_CONNECTED>aid:%d, "MACSTR"",
                  child_connected->aid,
                  MAC2STR(child_connected->mac));
+                         esp_mesh_get_id(&id);
+                         memcpy(&id.addr,&child_connected->mac,6);
+
+        send_ssid_broadcast(id);      //ewverybody gets updated for the time being
     }
     break;
     case MESH_EVENT_CHILD_DISCONNECTED: {
@@ -919,9 +942,8 @@ void init_vars()
 // internal mesh commands 
 
     int x=0;
-    strcpy(internal_cmds[x++],"conf");
-    strcpy(internal_cmds[x++],"sta");
-    strcpy(internal_cmds[x++],"router");
+    strcpy(internal_cmds[x++],"boot");
+    strcpy(internal_cmds[x++],"bootresp");
 
 
     x=0;//reset counter
