@@ -597,7 +597,8 @@ static void mqtt_app_start(void)
     mqtt_cfg.cert_pem=                          NULL;
     mqtt_cfg.cert_len=                          0;
     #else
-    mqtt_cfg.uri = 					            "mqtts://m13.cloudmqtt.com:28747";  // pem certificate for m13.cloudmqtt.com:28747
+    // mqtt_cfg.uri = 					            "wss://m13.cloudmqtt.com:38747";  // pem certificate for m13.cloudmqtt.com:28747 match with hivews.pem
+    mqtt_cfg.uri = 					            "mqtts://m13.cloudmqtt.com:28747";  // pem certificate for m13.cloudmqtt.com:28747 match with hivessl.pem
     mqtt_cfg.cert_pem=                          (char*)hive_start;
     mqtt_cfg.cert_len=                          ssllen;
     #endif
@@ -607,7 +608,8 @@ static void mqtt_app_start(void)
 
 // NOTICE
 // WITHOUT ssl encryption average3 message of 8 meters takes aprox 450ms
-// WITH ssl encryption it 1200ms to 2600ms  really a LOT!!!!!! for your information IMPORTANT
+// WITH ssl encryption it 1250 !!! for your information IMPORTANT
+// wss takes 2000ms even worse
 
     mqttQ = xQueueCreate( 20, sizeof( mqttMsg_t ) );
     if(!mqttQ)
