@@ -38,7 +38,7 @@ EXTERN QueueHandle_t 				mqttQ,mqttR,mqttSender,pcnt_evt_queue;
 EXTERN cmdRecord 					cmds[MAXCMDS];
 EXTERN config_flash                 theConf;
 EXTERN nvs_handle 					nvshandle;
-EXTERN char                         cmdQueue[30],infoQueue[30],configQueue[30],fecha[50],internal_cmds[MAXINTCMDS][20];
+EXTERN char                         cmdQueue[30],infoQueue[30],fecha[50],internal_cmds[MAXINTCMDS][20];
 EXTERN float                        amps[MAXDEVSS];
 #ifdef DISPLAY  
 EXTERN u8g2_t                       u8g2; // a structure which will contain all the data for one display

@@ -395,8 +395,8 @@ int cmdConfig(int argc, char **argv)
   printf("\n======= Mesh Configuration Date: %s=======\n",fecha);
   printf("Firmware Version:%s NType:%s MAC:" MACSTR " LogLevel:%d\n", running_app_info.version,tipo[typ],MAC2STR(my_mac),
   theConf.loglevel);
-  printf("Mesh config:%s Mesh Id: %02x Meter config:%d SubNode: %d Conf Passw:%d\n",theConf.meshconf?theConf.meshconf>1?"NonRoot":"Provision":"Not Conf",
-          theConf.meshid,theConf.meterconf,theConf.subnode,theConf.confpassword);
+  printf("Mesh config:%s Mesh Id: %02x Meter config:%s SubNode: %d\n",theConf.meshconf?"Yes":"No",
+          theConf.meshid,theConf.meterconf?"Yes":"No",theConf.subnode);
   printf("Sta %s Psw %s ",conf.sta.ssid,conf.sta.password);
   printf(" Config_Sta %s Config_Psw %s ",theConf.thessid,theConf.thepass);
   esp_wifi_get_config(WIFI_IF_AP, &conf);

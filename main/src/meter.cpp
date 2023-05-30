@@ -138,7 +138,7 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
                                 cJSON *tcid= 		cJSON_GetObjectItem(elcmd,"cid");
                                 if(tcid)
                                 {
-                                    sprintf(topic,"%s%d",configQueue,tcid->valueint);
+                                    sprintf(topic,"%s%d",infoQueue,tcid->valueint);
                                     mqttMsg.queue=topic;
                                     mqttMsg.msg=mensaje;
                                     mqttMsg.lenMsg=strlen(mensaje);
@@ -874,7 +874,6 @@ void init_vars()
 //cmd and info queue names
     sprintf(cmdQueue,"meter/%d/%d/%d/%d/%d/cmd",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
     sprintf(infoQueue,"meter/%d/%d/%d/%d/%d/info",theConf.provincia,theConf.canton,theConf.parroquia,theConf.codpostal,theConf.controllerid);
-    sprintf(configQueue,"meter/config/");
     printf("Cmd Q %s\nInfo %s\n",cmdQueue,infoQueue);
 
     oldcual=9999;

@@ -17,7 +17,7 @@ static esp_err_t conn_base(httpd_req_t *req);
 static esp_err_t configure(httpd_req_t *req);
 
 extern const unsigned char params_start[] 		asm("_binary_indexmin_html_start");	//default base html
-extern const uint8_t server_cert_pem_start[] 	asm("_binary_serverkey_pem_start");	//for ssl
+// extern const uint8_t server_cert_pem_start[] 	asm("_binary_serverkey_pem_start");	//for ssl
 extern const unsigned char ok_start[] 			asm("_binary_ok_png_start");
 extern const unsigned char ok_end[] 			asm("_binary_ok_png_end");
 extern const unsigned char nak_start[] 			asm("_binary_nak_png_start");
@@ -362,7 +362,8 @@ int sendHtmlInt(char *que, char * params, char *answer)
 	// sprintf(textl,"https://www.meteriot.site/%s",que);
 	lconfig.url=textl;
 	lconfig.user_data=(void*)answer;
-	lconfig.cert_pem = (char *)server_cert_pem_start;
+	lconfig.cert_pem = NULL;
+	// lconfig.cert_pem = (char *)server_cert_pem_start;
 	lconfig.skip_cert_common_name_check = true;
 
 	#ifdef DEBUGX
