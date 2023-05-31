@@ -58,5 +58,7 @@ EXTERN httpd_handle_t 				wserver;
 EXTERN wstate_t						webState;
 EXTERN char                         gwStr[20],*tempb,topic[100],iv[16],key[32];
 EXTERN mesh_addr_t                  GroupID; 
-
+EXTERN int                          existing_nodes,counting_nodes;
+EXTERN medidores_mac_t              theTable;
+EXTERN cJSON *                      meterRoot;
 #endif

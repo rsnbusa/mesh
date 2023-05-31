@@ -103,6 +103,12 @@ typedef struct config {
     char        thessid[40], thepass[20];
 } config_flash;
 
+
+typedef struct medidores_mac{
+    mesh_addr_t     big_table[MAXNODES];
+    bool            received[MAXNODES];
+} medidores_mac_t;
+
 #endif
 
 /*

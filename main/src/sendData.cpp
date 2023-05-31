@@ -44,7 +44,9 @@ char * sendData(bool forced)
         strftime(buf, 50, "%c", &timeinfo);
 
         //add members 
+        cJSON_AddStringToObject(root,"cmd",internal_cmds[3]);
         cJSON_AddNumberToObject(root,"ControlId",theConf.controllerid);
+        cJSON_AddNumberToObject(root,"Node",theConf.subnode);
         cJSON_AddStringToObject(root,"TS",buf);
         if(medArray)
             cJSON_AddItemToObject(root, "Medidores",medArray);

@@ -111,36 +111,96 @@ void send_ssid_broadcast(mesh_addr_t thismac)
     }
     free(topic);    
 }
-// void send_ssid_broadcast()
-// {
-//     int                 err;
-//     wifi_config_t       configsta;
-//     mesh_data_t         data;
-//     char                *topic;
-//     time_t              now;
 
-//     time(&now);
-//     topic=(char*)malloc(200);
-//     //dont check null
-//     err=esp_wifi_get_config( WIFI_IF_STA,&configsta);      // get station ssid and password
-//     if(!err)
-//     {
-//         sprintf(topic,"{\"cmd\":\"%s\",\"ssid\":\"%s\",\"psw\":\"%s\",\"time\":%u}",internal_cmds[1],configsta.sta.ssid,
-//             configsta.sta.password,(uint32_t)now);
+// works with a timer in case an expected node never sends the meter data
+void check_incoming_meters(mesh_addr_t *who, cJSON *meter_data_array,int nodeid)
+{
+    char nodestr[10];
 
-//         data.data=(uint8_t*)topic;
-//         data.size   = strlen(topic);
-//         data.proto  = MESH_PROTO_BIN;
-//         data.tos    = MESH_TOS_P2P;
+    for (int a=0;a<existing_nodes;a++)
+    {
+        if (MAC_ADDR_EQUAL(theTable.big_table[a].addr, who->addr)) 
+        {//its our baby
+            if (!theTable.received[a]) //new meter array for this node
+            {
+                //add array to our json structure
+                sprintf(nodestr,"Subnode%d",nodeid);
+                cJSON_AddItemToObject(meterRoot, nodestr,meter_data_array);
+                theTable.received[a]=true;
+                counting_nodes--;
+                printf("Remaining Nodes %d\n",counting_nodes);
+                if(counting_nodes==0)
+                {
+                    printf("Fire away %d nodes\n",existing_nodes);
+                    char *todo=cJSON_Print(meterRoot);
+                    printf("Todo [%s]\n\n",todo);
+                    free(todo);
+                    //send mqtt msg
+                    //free cJSON root
+                     cJSON_Delete(meterRoot);       //free ram
+                    //done
+                }
+            }
+        }
+    }
 
-//         //send a Broadcxast Message toa ll nodes to update SSID/Passwaord
-//         // printf("Sending Broadcast [%s]\n",(char*)data.data);
-//         err= esp_mesh_send( &GroupID, &data, MESH_DATA_P2P, NULL, MESH_OPT_SEND_GROUP); 
-//         if(err)
-//             printf("Broadcast failed %x\n",err);
-//     }
-//     free(topic);    
-// }
+    // if all meters are now in, send message to HQ, release CJSON root node
+
+
+
+}
+
+void collect_meter_data()
+{
+    int                 err;    
+    mesh_data_t         data;
+    char                *topic;
+
+// create a root json object, must be freed eventually
+	meterRoot=cJSON_CreateObject();
+    if(!meterRoot)
+    {
+        printf("Total failure no Root Json\n");
+        return; //do nothing or send a MQTT msg with warnign yes do this
+    }
+
+// some headers first
+
+    cJSON_AddStringToObject(meterRoot,"cmd","BMeters");
+    cJSON_AddNumberToObject(meterRoot,"ControlId",theConf.controllerid);
+
+// get routing table if root
+    if(esp_mesh_is_root()) //only  ROOT , redundant but anyway
+    {
+        bzero(&theTable,sizeof(theTable));
+
+        err=esp_mesh_get_routing_table((mesh_addr_t *) &theTable.big_table,MAXNODES * 6, &existing_nodes);
+        if(err)
+        {
+            printf("Total failure no Routing table access\n");
+            cJSON_Delete(meterRoot);       //free ram
+            return; 
+
+        }
+        printf("Nodes avail %d\n",existing_nodes);
+        counting_nodes=existing_nodes;  //copy for counting purposes
+        // ready to start receiving meters from nodes after broadcast
+        topic=(char*)malloc(200);
+
+        sprintf(topic,"{\"cmd\":\"sendmeters\"}");
+        data.data   =(uint8_t*)topic;
+        data.size   = strlen(topic);
+        data.proto  = MESH_PROTO_BIN;
+        data.tos    = MESH_TOS_P2P;
+
+        //send a Broadcxast Message toa ll nodes to  send meters data
+        err= esp_mesh_send( &GroupID, &data, MESH_DATA_P2P, NULL, MESH_OPT_SEND_GROUP); 
+        if(err)
+            printf("Broadcast failed %x\n",err);
+        free(topic);    
+    }
+}
+
 
 void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
 {
@@ -149,34 +209,37 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
     wifi_config_t       configsta;
     int                 err; 
     struct timeval      now;
+    char                *message,*temp,*msg2;
+    mesh_data_t         datas;
 
 
-    char *mensaje=(char *)malloc(1000);
-    strcpy(mensaje,(char*)data->data);
-    printf("Message in [%s]\n",mensaje);
+    message=(char *)malloc(500);
+    if(!message)
+    {
+        printf("Failed message in\n");
+        return;
+    }
 
+    bzero(message,500);
+    memcpy(message,(char*)data->data,data->size);
+    printf("%d Message in [%s]\n",strlen(message),message);
+delay(100); //time to print
  //   printf("Procesor message in %s\n",mensaje);
-    elcmd= cJSON_Parse(mensaje);		//plain text to cJSON... must eventually cDelete elcmd
+
+    elcmd= cJSON_Parse(message);		//plain text to cJSON... must eventually cDelete elcmd
     if (elcmd)
     {   // valid json
-        // printf("valid Json %s\n",que);
+        printf("valid Json \n");
         cJSON *command= 		cJSON_GetObjectItem(elcmd,"cmd");
         if(command)
             {
-              //  printf("Find cmd [%s]\n",command->valuestring);
                 int cualf=findInternalCmds(command->valuestring);
+               printf("Find cmd [%s][%d]\n\n\n",command->valuestring,cualf);
+
                 if(cualf>=0)
                 {
                     switch (cualf)
                     {
-                        // case 0:// requiring source ssid and password, respond using a broadcast to all to update ssid/password
-                        //     printf("Boot sent by a Child. Send Time and Sta/Pswd\n");
-                        //     if(esp_mesh_is_root())
-                        //         send_ssid_broadcast();
-                        //     cJSON_Delete(elcmd);
-                        //     free(mensaje); 
-                        //     return;
-                        //     break;
                         case 1: // a msg from Root giving the current ssid/pswd
                             printf("Boot response\n");
                             if(!esp_mesh_is_root()) //only non ROOT 
@@ -209,9 +272,102 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
                                 }
                             }
                             cJSON_Delete(elcmd);
-                            free(mensaje); 
+                            free(message); 
                             return;
-                            break;                            
+                            break;       
+                        case 2:// host is requiring Node sends its meter data
+                                printf("Send Meters from Host\n");
+                                if(true) //only non ROOT 
+                                // if(esp_mesh_is_root()) //only non ROOT 
+                                {
+                                    temp=sendData(true);
+                                    if(temp)
+                                    {
+                                        msg2=(char*)malloc(500);
+                                        if(msg2)
+                                        {
+                                            bzero(msg2,500);
+                                            memcpy(msg2,temp,strlen(temp));
+                                            datas.data=(uint8_t*)msg2;
+                                            printf("Data [%s]\n",(char*)datas.data);
+                                            datas.size   = strlen(msg2);
+                                            datas.proto  = MESH_PROTO_BIN;
+                                            datas.tos    = MESH_TOS_P2P;
+                                            err= esp_mesh_send( NULL, &datas, MESH_DATA_P2P, NULL, 0); 
+                                            if(err)
+                                                printf("Send Meters failed %x\n",err);
+                                            // delay(400);     //give him some time
+                                            free(msg2);
+                                            // free(message);
+                                            // cJSON_Delete(elcmd);
+                                            // return;
+                                        }
+                                        free(temp);
+                                    }
+                                    else
+                                    {
+                                        printf("No Ram send meters\n");
+                                    }
+                                }
+                                free(message);
+                                cJSON_Delete(elcmd);
+                                return;
+                            break;
+                        case 3:// meter data from nodes
+                                printf("Meter Data\n");
+                                if(esp_mesh_is_root()) //only ROOT 
+                                {
+                                    cJSON *nodej= 		cJSON_GetObjectItem(elcmd,"Node");
+                                    if(nodej)
+                                        printf("Node [%d]\n",nodej->valueint);
+
+                                    cJSON *medidores= 		cJSON_GetObjectItem(elcmd,"Medidores");
+                                    if(medidores)
+                                    {   
+                                        int son=cJSON_GetArraySize(medidores);
+                                        printf("Found %d Medidores\n",son);
+
+                                        // for (int a=0;a<son;a++)
+                                        // {
+                                        //     cJSON *cmdIteml 	=cJSON_GetArrayItem(medidores, a);//next item
+                                        //     if(cmdIteml)
+                                        //     {
+                                        //         cJSON *midid			=cJSON_GetObjectItem(cmdIteml,"MID"); //get cmd.
+                                        //         if(midid)
+                                        //         {
+                                        //             printf("Found MID[%d] %s\n",a,midid->valuestring);
+                                        //         }
+                                        //     }
+                                        // }
+                                        check_incoming_meters(from,medidores,nodej->valueint);
+                                    }
+                                    else
+                                    {
+                                        printf("Could not find meidores\n");
+                                    }
+
+                                    // strcpy(mensaje,(char*)data->data);
+
+                                    // message=sendData(true);
+                                    // if(message)
+                                    // {
+                                    //     datas.data=(uint8_t*)message;
+                                    //     datas.size   = strlen(message);
+                                    //     datas.proto  = MESH_PROTO_BIN;
+                                    //     datas.tos    = MESH_TOS_P2P;
+                                    //     err= esp_mesh_send( NULL, &datas, MESH_DATA_P2P, NULL, 0); 
+                                    //     if(err)
+                                    //         printf("Send Meters failed %x\n",err);
+                                    //     delay(100);     //give him some time
+                                    //     free(message);
+                                    // }
+                                    // else
+                                    //     printf("No Ram send meters\n");
+                                    return;
+                                 }
+                                free(message);
+                                return;
+                            break;                                                                             
                         default:
                             printf("Internal not found\n");
                             cJSON_Delete(elcmd);        //do not delete malloc buffer, usede by next logic
@@ -219,15 +375,16 @@ void static mesh_recv_cb(mesh_addr_t *from, mesh_data_t *data)
                     }
                 }
             }
-    }   //no else, just fall thru 
+            cJSON_Delete(elcmd);        // no cmd found but still a valid json, delete it
+    }   //no else, just fall thru to send via Root MQTT server
 
-    strcpy(mensaje,(char*)data->data);
+    // strcpy(mensaje,(char*)data->data);
     mqttMsg.queue=infoQueue;
-    mqttMsg.msg=mensaje;
-    mqttMsg.lenMsg=strlen(mensaje);
+    mqttMsg.msg=message;
+    mqttMsg.lenMsg=strlen(message);
     // printf("Sending mqtt mesh  not internal msg [%s]\n",mensaje);
 
-     if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)      //will free mensaje malloc
+     if(xQueueSend(mqttSender,&mqttMsg,0)!=pdPASS)      //will free message malloc
         {
             printf("Error queueing msg\n");
             if(mqttMsg.msg)
@@ -656,44 +813,42 @@ static void mqtt_app_start(void)
     }
 }
 
-void esp_mesh_p2p_rx_main(void *arg)
-{
-    int recv_count = 0;
-    uint32_t aca;
-    esp_err_t err;
-    mesh_addr_t from;
-    int send_count = 0;
-    mesh_data_t data;
-    int flag = 0;
-    data.data = (uint8_t*)malloc(1000);;
-    data.size = 1000;
-    is_running = true;
-        mqttSender_t mqttMsg;
+// void esp_mesh_p2p_rx_main(void *arg)
+// {
+//     int recv_count = 0;
+//     uint32_t aca;
+//     esp_err_t err;
+//     mesh_addr_t from;
+//     int send_count = 0;
+//     mesh_data_t data;
+//     int flag = 0;
+//     data.data = (uint8_t*)malloc(1000);;
+//     data.size = 1000;
+//     is_running = true;
+//         mqttSender_t mqttMsg;
 
 
-    while (true)
-    {
-        data.size = 1000;
-        aca=0;
-        err = esp_mesh_recv(&from, &data, portMAX_DELAY, &flag, NULL, 0);
-        if (err != ESP_OK || !data.size) {
-            ESP_LOGE(MESH_TAG, "err:0x%x, size:%d", err, data.size);
-            continue;
-        }      
-        memcpy(&aca,data.data,4);
-        if (aca!=0xffffffff)
-        {
-            // esp_log_buffer_hex("NADA",data.data,data.size);
-            ESP_LOGI(MESH_TAG,
-                        "%s [L:%d] parent:"MACSTR", receive from "MACSTR", size:%d, heap:%d, flag:%d[err:0x%x, proto:%d, tos:%d]",data.data,
-                        mesh_layer, MAC2STR(mesh_parent_addr.addr), MAC2STR(from.addr),
-                        data.size, esp_get_minimum_free_heap_size(), flag, err, data.proto,
-                        data.tos);
-        }
-    }
-}
-
-
+//     while (true)
+//     {
+//         data.size = 1000;
+//         aca=0;
+//         err = esp_mesh_recv(&from, &data, portMAX_DELAY, &flag, NULL, 0);
+//         if (err != ESP_OK || !data.size) {
+//             ESP_LOGE(MESH_TAG, "err:0x%x, size:%d", err, data.size);
+//             continue;
+//         }      
+//         memcpy(&aca,data.data,4);
+//         if (aca!=0xffffffff)
+//         {
+//             // esp_log_buffer_hex("NADA",data.data,data.size);
+//             ESP_LOGI(MESH_TAG,
+//                         "%s [L:%d] parent:"MACSTR", receive from "MACSTR", size:%d, heap:%d, flag:%d[err:0x%x, proto:%d, tos:%d]",data.data,
+//                         mesh_layer, MAC2STR(mesh_parent_addr.addr), MAC2STR(from.addr),
+//                         data.size, esp_get_minimum_free_heap_size(), flag, err, data.proto,
+//                         data.tos);
+//         }
+//     }
+// }
 
 void mesh_event_handler(void *arg, esp_event_base_t event_base,
                         int32_t event_id, void *event_data)
@@ -944,6 +1099,8 @@ void init_vars()
     int x=0;
     strcpy(internal_cmds[x++],"boot");
     strcpy(internal_cmds[x++],"bootresp");
+    strcpy(internal_cmds[x++],"sendmeters");
+    strcpy(internal_cmds[x++],"meterdata");
 
 
     x=0;//reset counter

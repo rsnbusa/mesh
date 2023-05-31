@@ -11,6 +11,7 @@ extern void write_to_flash();
 extern void start_ota();
 extern char * sendData(bool forced);
 extern int aes_encrypt(const char* src, size_t son, char *dst,const char *cualKey);
+extern void collect_meter_data();
 
 void delay(uint32_t cuanto);
 
@@ -592,23 +593,9 @@ int cmdResetConf(int argc, char **argv)
           theConf.meshconf=0;
           break;
         case 3:
-          err=esp_wifi_get_config( WIFI_IF_STA,&configsta);      // get station ssid and password
-          if(!err)
-          {
-            memcpy(&configsta.sta.ssid,(char*)"Porton\0",7);
-            memcpy(&configsta.sta.password,(char*)"csttpstt\0",9);
-            err=esp_wifi_set_config( WIFI_IF_STA,&configsta);      // save new ssid and password
-            if(err)
-                printf("Failed to save new ssid %x\n",err);
-            else
-              {
-                theConf.meshconf=1;
-                write_to_flash();
-                printf("Sta saved\n");
-              }
-          }
-          else 
-            printf("Error getting STA config %x\n",err);
+          printf("Collect Data\n");
+          if(esp_mesh_is_root()) //only non ROOT 
+              collect_meter_data();
             break;
         default:
           printf("Wrong choice of reset\n");

@@ -29,4 +29,5 @@
 #define MAXINTCMDS                      5
 #define SUPERSECRET                     "mi mama me mima mucho"
 #define APPNAME                         "meter"
-#define MQTTSECURE                          
+#define MQTTSECURE       
+#define MAXNODES                        100                   
